@@ -1,4 +1,5 @@
-# multibridhe-inbox-discord-bot
+# multiplaform-bridge-inbox-discord-bot
+
 
 Bot Discord Python servant de bridge de messagerie unifié.
 
