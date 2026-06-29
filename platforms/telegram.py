@@ -23,6 +23,7 @@ class TelegramPlatform:
         if not self.token:
             logger.info("No TELEGRAM_TOKEN provided; Telegram platform not started.")
             return
+
         self.app = ApplicationBuilder().token(self.token).build()
 
         async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -35,7 +36,7 @@ class TelegramPlatform:
 
             attachments = []
             try:
-                # Photos (list) - pick highest resolution
+                # Photos (list) - pick highest resolution if present
                 if update.message.photo:
                     photo = update.message.photo[-1]
                     file = await context.bot.get_file(photo.file_id)
@@ -104,13 +105,35 @@ class TelegramPlatform:
                 logger.exception("Failed to download attachments from Telegram message")
 
             # forward to discord
-            await self.discord.post_inbound_message("TL", user_id, display_name, text, attachments=attachments)
+            try:
+                await self.discord.post_inbound_message("TL", user_id, display_name, text, attachments=attachments)
+            except Exception:
+                logger.exception("Failed forwarding Telegram message to Discord")
 
         self.app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, on_message))
         logger.info("Starting Telegram listener")
-        await self.app.start()
-        # Use run_polling in v20 for a proper lifecycle; start polling via updater
-        await self.app.updater.start_polling()
+        try:
+            # IMPORTANT: for python-telegram-bot v20+, initialize before start
+            await self.app.initialize()
+            await self.app.start()
+            # start polling (updater) after initialization/start
+            await self.app.updater.start_polling()
+            logger.info("Telegram listener started")
+        except Exception:
+            logger.exception("Telegram listener failed to start")
+            # attempt a clean shutdown if partial initialization happened
+            try:
+                await self.app.updater.stop_polling()
+            except Exception:
+                pass
+            try:
+                await self.app.stop()
+            except Exception:
+                pass
+            try:
+                await self.app.shutdown()
+            except Exception:
+                pass
 
     async def send(self, platform_user_id: str, text: str, attachments=None):
         # send a message back to the user via Telegram
@@ -121,12 +144,12 @@ class TelegramPlatform:
         try:
             # If attachments provided, send them (use send_document for generality)
             if attachments:
-                for att in attachments:
+                for idx, att in enumerate(attachments):
                     try:
                         bio = io.BytesIO(att['bytes'])
                         bio.seek(0)
-                        # Use send_document for generic files; caption = text for first
-                        await self.app.bot.send_document(chat_id=chat_id, document=bio, filename=att.get('filename'), caption=text if att == attachments[0] else None)
+                        caption = text if idx == 0 else None
+                        await self.app.bot.send_document(chat_id=chat_id, document=bio, filename=att.get('filename'), caption=caption)
                     except Exception:
                         logger.exception(f"Failed to send attachment to Telegram user {platform_user_id}")
                 return

@@ -1,22 +1,3 @@
-#!/usr/bin/env python3
-"""Entrypoint pour le bot.
-Charge la config, initialise la base et démarre les services.
-"""
-import os
-from dotenv import load_dotenv
-from discord_bot import DiscordBridge
-
-load_dotenv()
-
-
-def main():
-    discord = DiscordBridge()
-    # Démarrage synchrone : run() bloque et gère la loop
-    discord.run(os.getenv("DISCORD_TOKEN"))
-
-
-if __name__ == "__main__":
-    main()
 # main.py
 """
 Entrypoint for the multiplaform bridge inbox bot.
@@ -39,6 +20,12 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+async def _start_platform(platform_obj, name: str):
+    try:
+        await platform_obj.start()
+    except Exception:
+        logger.exception("Platform %s crashed during start", name)
+
 async def main():
     # Load config from environment
     DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
@@ -55,16 +42,17 @@ async def main():
 
     # Start Discord
     discord = DiscordBridge(db=db, guild_id=DISCORD_GUILD_ID, admin_id=DISCORD_ADMIN_ID)
-    # Start discord in background
     await discord.start(DISCORD_TOKEN)  # waits until ready
 
     # Register platforms
     telegram = TelegramPlatform(token=os.getenv("TELEGRAM_TOKEN"), discord=discord, db=db)
-    # Register platform handlers so Discord can route outbound messages
     discord.register_platform_handler("TL", telegram)
 
-    # Start platform connectors (telegram is async and will run its own loop)
-    await telegram.start()
+    # Start platform connectors in background so a platform failure doesn't kill the whole loop
+    if os.getenv("TELEGRAM_TOKEN"):
+        asyncio.create_task(_start_platform(telegram, "Telegram"))
+    else:
+        logger.info("TELEGRAM_TOKEN not set; Telegram connector will not be started.")
 
     # Stubs for other platforms (not started by default)
     whatsapp = WhatsAppPlatform(discord=discord, db=db)
@@ -79,9 +67,8 @@ async def main():
     discord.register_platform_handler("SC", snapchat)
     discord.register_platform_handler("TK", tiktok)
 
-    # Keep the process alive
+    # Keep the process alive until the Discord bot task ends
     await discord.wait_until_closed()
-
 
 if __name__ == "__main__":
     try:
