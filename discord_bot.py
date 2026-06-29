@@ -1,80 +1,3 @@
-"""discord_bot.py
-Gestion minimale de la connexion Discord et de la catégorie INBOX.
-- crée la catégorie INBOX si elle n'existe pas
-- crée / réutilise des channels dans la catégorie
-- intercept des messages de l'admin pour les relayer vers les plateformes (lookup DB)
-
-Note: implémentation de base — à étendre.
-"""
-import os
-import sqlite3
-import asyncio
-from discord.ext import commands
-from discord import utils
-from database import init_db, DB_PATH
-
-INBOX_CATEGORY_NAME = "INBOX"
-GUILD_ID = int(os.getenv("DISCORD_GUILD_ID", "0"))
-ADMIN_ID = int(os.getenv("DISCORD_ADMIN_ID", "0"))
-
-
-class DiscordBridge(commands.Bot):
-    def __init__(self):
-        intents = discord_intents()
-        super().__init__(command_prefix="!", intents=intents)
-        init_db()
-        self.db = sqlite3.connect(DB_PATH)
-
-    async def setup_hook(self):
-        # Called before on_ready
-        pass
-
-    async def on_ready(self):
-        print(f"Logged in as {self.user} (id: {self.user.id})")
-        guild = self.get_guild(GUILD_ID)
-        if guild is None:
-            print("Guild not found; check DISCORD_GUILD_ID")
-            return
-
-        category = utils.get(guild.categories, name=INBOX_CATEGORY_NAME)
-        if category is None:
-            category = await guild.create_category(INBOX_CATEGORY_NAME)
-            print("INBOX category created")
-        self.inbox_category = category
-        print("DiscordBridge ready")
-
-    async def on_message(self, message):
-        # Ignore messages from this bot
-        if message.author.id == self.user.id:
-            return
-        # Handle only admin messages for outgoing relays
-        if message.author.id != ADMIN_ID:
-            return
-        # Lookup mapping: channel -> (platform, platform_user_id)
-        channel_id = message.channel.id
-        cur = self.db.cursor()
-        cur.execute(
-            "SELECT platform, platform_user_id FROM mappings WHERE discord_channel_id = ?",
-            (channel_id,),
-        )
-        row = cur.fetchone()
-        if not row:
-            # No mapping — ignore
-            return
-        platform, platform_user_id = row
-        content = message.content
-        # TODO: call the corresponding platform sender
-        print(f"Outgoing to {platform}:{platform_user_id}: {content}")
-
-
-def discord_intents():
-    from discord import Intents
-
-    intents = Intents.default()
-    intents.message_content = True
-    intents.messages = True
-    intents.guilds = True
-    return intents
 # discord_bot.py
 """
 Discord bot that manages the INBOX category and channels mapping.
@@ -82,6 +5,7 @@ Listens for admin replies in the per-user channels and forwards them to the regi
 """
 import asyncio
 import logging
+import io
 import discord
 from discord.ext import commands
 
@@ -100,7 +24,7 @@ class DiscordBridge:
         self.db = db
         self.guild_id = guild_id
         self.admin_id = admin_id
-        self.platform_handlers = {}  # map platform tag -> handler with send(platform_user_id, text)
+        self.platform_handlers = {}  # map platform tag -> handler with send(platform_user_id, text, attachments)
         self._ready_event = asyncio.Event()
         self._closed = False
         self._bot_task = None
@@ -128,13 +52,25 @@ class DiscordBridge:
                     platform, platform_user_id = mapping
                     handler = self.platform_handlers.get(platform)
                     if handler and hasattr(handler, 'send'):
-                        # send text only for now
-                        if message.content:
+                        # gather attachments if any
+                        attachments = []
+                        for att in message.attachments:
                             try:
-                                await handler.send(platform_user_id, message.content)
+                                data = await att.read()
+                                attachments.append({
+                                    'filename': att.filename,
+                                    'bytes': data,
+                                    'content_type': att.content_type,
+                                })
+                            except Exception:
+                                logger.exception(f"Failed to download attachment {att.url}")
+                        # send text and attachments
+                        if message.content or attachments:
+                            try:
+                                await handler.send(platform_user_id, message.content or "", attachments=attachments)
                             except Exception as e:
                                 logger.exception(f"Failed to forward admin message to platform {platform}: {e}")
-                        # TODO: support attachments/media
+                        # TODO: support embed/other content types
                 return
 
             # For non-admin inbound messages in INBOX channels we don't act specially
@@ -206,10 +142,24 @@ class DiscordBridge:
             logger.exception("Failed to get or create channel")
             raise
 
-    async def post_inbound_message(self, platform_tag: str, platform_user_id: str, display_name: str, text: str):
+    async def post_inbound_message(self, platform_tag: str, platform_user_id: str, display_name: str, text: str, attachments=None):
         try:
             channel = await self.get_or_create_channel_for(platform_tag, platform_user_id, display_name)
             author = f"[{platform_tag}]{display_name}"
-            await channel.send(f"**{author}**: {text}")
+            files = []
+            if attachments:
+                for att in attachments:
+                    try:
+                        bio = io.BytesIO(att['bytes'])
+                        bio.seek(0)
+                        filename = att.get('filename') or 'file'
+                        files.append(discord.File(fp=bio, filename=filename))
+                    except Exception:
+                        logger.exception("Failed to prepare attachment for Discord")
+            content = f"**{author}**: {text}" if text else f"**{author}**"
+            if files:
+                await channel.send(content, files=files)
+            else:
+                await channel.send(content)
         except Exception:
             logger.exception("Failed to post inbound message to Discord")
