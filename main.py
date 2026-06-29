@@ -24,6 +24,7 @@ Starts the Discord bot and platform connectors (Telegram + stubs).
 """
 import os
 import asyncio
+import logging
 from dotenv import load_dotenv
 from database import Database
 from discord_bot import DiscordBridge
@@ -35,6 +36,8 @@ from platforms.snapchat import SnapchatPlatform
 from platforms.tiktok import TikTokPlatform
 
 load_dotenv()
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 async def main():
     # Load config from environment
@@ -43,15 +46,17 @@ async def main():
     DISCORD_ADMIN_ID = int(os.getenv("DISCORD_ADMIN_ID")) if os.getenv("DISCORD_ADMIN_ID") else None
 
     if not DISCORD_TOKEN or not DISCORD_GUILD_ID or not DISCORD_ADMIN_ID:
-        print("Missing DISCORD_TOKEN, DISCORD_GUILD_ID or DISCORD_ADMIN_ID in environment. Exiting.")
+        logger.error("Missing DISCORD_TOKEN, DISCORD_GUILD_ID or DISCORD_ADMIN_ID in environment. Exiting.")
         return
 
-    # Initialize DB
+    # Initialize DB (async)
     db = Database(os.getenv("DATABASE_PATH", "./data/bot.db"))
+    await db.connect()
 
     # Start Discord
     discord = DiscordBridge(db=db, guild_id=DISCORD_GUILD_ID, admin_id=DISCORD_ADMIN_ID)
-    await discord.start(DISCORD_TOKEN)  # this will run until bot is ready
+    # Start discord in background
+    await discord.start(DISCORD_TOKEN)  # waits until ready
 
     # Register platforms
     telegram = TelegramPlatform(token=os.getenv("TELEGRAM_TOKEN"), discord=discord, db=db)
@@ -82,4 +87,4 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("Shutting down")
+        logger.info("Shutting down")
