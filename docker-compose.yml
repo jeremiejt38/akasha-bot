@@ -1,0 +1,26 @@
+version: '3.8'
+services:
+  bot:
+    build: .
+    container_name: multibridhe-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+    networks:
+      - multibridge-net
+
+  # Example service for whatsapp-web.js (optional)
+  whatsapp:
+    image: keybased/whatsapp-web.js:latest
+    restart: unless-stopped
+    volumes:
+      - ./whatsapp_data:/usr/src/app/session
+    environment:
+      - TZ=UTC
+    networks:
+      - multibridge-net
+
+networks:
+  multibridge-net:
