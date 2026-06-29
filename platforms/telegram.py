@@ -3,14 +3,21 @@
 Telegram platform connector using python-telegram-bot v20 (async).
 It receives messages from Telegram and forwards them to Discord via the DiscordBridge instance.
 It also exposes a `send(platform_user_id, text, attachments=None)` coroutine used by Discord to send outbound messages.
+This version writes large attachments to temporary files to avoid using too much memory.
 """
 import asyncio
 import logging
 import io
+import os
+import tempfile
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters
 
 logger = logging.getLogger(__name__)
+
+# Threshold (in bytes) for keeping attachments in memory vs writing to disk
+THRESHOLD_MB = int(os.getenv("MAX_ATTACHMENT_MEMORY_MB", "5"))
+THRESHOLD_BYTES = THRESHOLD_MB * 1024 * 1024
 
 class TelegramPlatform:
     def __init__(self, token: str, discord, db):
@@ -18,6 +25,31 @@ class TelegramPlatform:
         self.discord = discord
         self.db = db
         self.app = None
+
+    async def _download_file_maybe_to_disk(self, tg_file, suggested_name: str):
+        """Download a telegram File either to memory (BytesIO) or to a temp file depending on size."""
+        try:
+            size = getattr(tg_file, 'file_size', None) or 0
+        except Exception:
+            size = 0
+
+        if size and size < THRESHOLD_BYTES:
+            bio = io.BytesIO()
+            await tg_file.download(out=bio)
+            bio.seek(0)
+            return {'bytes': bio.getvalue(), 'filename': suggested_name}
+        else:
+            tmp = tempfile.NamedTemporaryFile(delete=False)
+            tmp.close()
+            try:
+                await tg_file.download(out=tmp.name)
+                return {'path': tmp.name, 'filename': suggested_name}
+            except Exception:
+                try:
+                    os.unlink(tmp.name)
+                except Exception:
+                    pass
+                raise
 
     async def start(self):
         if not self.token:
@@ -40,66 +72,41 @@ class TelegramPlatform:
                 if update.message.photo:
                     photo = update.message.photo[-1]
                     file = await context.bot.get_file(photo.file_id)
-                    bio = io.BytesIO()
-                    await file.download(out=bio)
-                    bio.seek(0)
-                    attachments.append({
-                        'filename': f"photo_{photo.file_id}.jpg",
-                        'bytes': bio.getvalue(),
-                        'content_type': 'image/jpeg',
-                    })
+                    got = await self._download_file_maybe_to_disk(file, f"photo_{photo.file_id}.jpg")
+                    got['content_type'] = 'image/jpeg'
+                    attachments.append(got)
 
                 # Document
                 if update.message.document:
                     doc = update.message.document
                     file = await context.bot.get_file(doc.file_id)
-                    bio = io.BytesIO()
-                    await file.download(out=bio)
-                    bio.seek(0)
-                    attachments.append({
-                        'filename': doc.file_name or f'doc_{doc.file_id}',
-                        'bytes': bio.getvalue(),
-                        'content_type': doc.mime_type,
-                    })
+                    got = await self._download_file_maybe_to_disk(file, doc.file_name or f'doc_{doc.file_id}')
+                    got['content_type'] = getattr(doc, 'mime_type', None)
+                    attachments.append(got)
 
                 # Video
                 if update.message.video:
                     vid = update.message.video
                     file = await context.bot.get_file(vid.file_id)
-                    bio = io.BytesIO()
-                    await file.download(out=bio)
-                    bio.seek(0)
-                    attachments.append({
-                        'filename': f"video_{vid.file_id}.mp4",
-                        'bytes': bio.getvalue(),
-                        'content_type': 'video/mp4',
-                    })
+                    got = await self._download_file_maybe_to_disk(file, f"video_{vid.file_id}.mp4")
+                    got['content_type'] = 'video/mp4'
+                    attachments.append(got)
 
                 # Audio
                 if update.message.audio:
                     aud = update.message.audio
                     file = await context.bot.get_file(aud.file_id)
-                    bio = io.BytesIO()
-                    await file.download(out=bio)
-                    bio.seek(0)
-                    attachments.append({
-                        'filename': aud.file_name or f'audio_{aud.file_id}',
-                        'bytes': bio.getvalue(),
-                        'content_type': aud.mime_type,
-                    })
+                    got = await self._download_file_maybe_to_disk(file, aud.file_name or f'audio_{aud.file_id}')
+                    got['content_type'] = getattr(aud, 'mime_type', None)
+                    attachments.append(got)
 
                 # Voice
                 if update.message.voice:
                     v = update.message.voice
                     file = await context.bot.get_file(v.file_id)
-                    bio = io.BytesIO()
-                    await file.download(out=bio)
-                    bio.seek(0)
-                    attachments.append({
-                        'filename': f"voice_{v.file_id}.ogg",
-                        'bytes': bio.getvalue(),
-                        'content_type': 'audio/ogg',
-                    })
+                    got = await self._download_file_maybe_to_disk(file, f"voice_{v.file_id}.ogg")
+                    got['content_type'] = 'audio/ogg'
+                    attachments.append(got)
 
             except Exception:
                 logger.exception("Failed to download attachments from Telegram message")
@@ -146,10 +153,19 @@ class TelegramPlatform:
             if attachments:
                 for idx, att in enumerate(attachments):
                     try:
-                        bio = io.BytesIO(att['bytes'])
-                        bio.seek(0)
                         caption = text if idx == 0 else None
-                        await self.app.bot.send_document(chat_id=chat_id, document=bio, filename=att.get('filename'), caption=caption)
+                        if 'bytes' in att:
+                            bio = io.BytesIO(att['bytes'])
+                            bio.seek(0)
+                            await self.app.bot.send_document(chat_id=chat_id, document=bio, filename=att.get('filename'), caption=caption)
+                        elif 'path' in att:
+                            with open(att['path'], 'rb') as fh:
+                                await self.app.bot.send_document(chat_id=chat_id, document=fh, filename=att.get('filename'), caption=caption)
+                            # cleanup temp file after sending
+                            try:
+                                os.unlink(att['path'])
+                            except Exception:
+                                pass
                     except Exception:
                         logger.exception(f"Failed to send attachment to Telegram user {platform_user_id}")
                 return

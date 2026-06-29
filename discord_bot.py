@@ -2,16 +2,24 @@
 """
 Discord bot that manages the INBOX category and channels mapping.
 Listens for admin replies in the per-user channels and forwards them to the registered platform handlers.
+
+This version supports streaming large attachments to temporary files to avoid using too much memory.
 """
 import asyncio
 import logging
 import io
+import os
+import tempfile
 import discord
 from discord.ext import commands
 
 INBOX_CATEGORY_NAME = "INBOX"
 
 logger = logging.getLogger(__name__)
+
+# Threshold (in bytes) for keeping attachments in memory vs writing to disk
+THRESHOLD_MB = int(os.getenv("MAX_ATTACHMENT_MEMORY_MB", "5"))
+THRESHOLD_BYTES = THRESHOLD_MB * 1024 * 1024
 
 class DiscordBridge:
     def __init__(self, db, guild_id: int, admin_id: int):
@@ -56,14 +64,34 @@ class DiscordBridge:
                         attachments = []
                         for att in message.attachments:
                             try:
-                                data = await att.read()
-                                attachments.append({
-                                    'filename': att.filename,
-                                    'bytes': data,
-                                    'content_type': att.content_type,
-                                })
+                                size = getattr(att, 'size', None) or 0
+                                if size and size >= THRESHOLD_BYTES:
+                                    # write to tmpfile to avoid loading into memory
+                                    tmp = tempfile.NamedTemporaryFile(delete=False)
+                                    tmp.close()
+                                    try:
+                                        await att.save(tmp.name)
+                                        attachments.append({
+                                            'path': tmp.name,
+                                            'filename': att.filename,
+                                            'content_type': att.content_type,
+                                        })
+                                    except Exception:
+                                        # cleanup on failure
+                                        try:
+                                            os.unlink(tmp.name)
+                                        except Exception:
+                                            pass
+                                        raise
+                                else:
+                                    data = await att.read()
+                                    attachments.append({
+                                        'bytes': data,
+                                        'filename': att.filename,
+                                        'content_type': att.content_type,
+                                    })
                             except Exception:
-                                logger.exception(f"Failed to download attachment {att.url}")
+                                logger.exception(f"Failed to download attachment {getattr(att, 'url', '<unknown>')}")
                         # send text and attachments
                         if message.content or attachments:
                             try:
@@ -147,13 +175,20 @@ class DiscordBridge:
             channel = await self.get_or_create_channel_for(platform_tag, platform_user_id, display_name)
             author = f"[{platform_tag}]{display_name}"
             files = []
+            temp_paths = []
             if attachments:
                 for att in attachments:
                     try:
-                        bio = io.BytesIO(att['bytes'])
-                        bio.seek(0)
-                        filename = att.get('filename') or 'file'
-                        files.append(discord.File(fp=bio, filename=filename))
+                        if 'bytes' in att:
+                            bio = io.BytesIO(att['bytes'])
+                            bio.seek(0)
+                            filename = att.get('filename') or 'file'
+                            files.append(discord.File(fp=bio, filename=filename))
+                        elif 'path' in att:
+                            # open file handle and keep track to close/delete later
+                            fp = open(att['path'], 'rb')
+                            files.append(discord.File(fp=fp, filename=att.get('filename') or os.path.basename(att['path'])))
+                            temp_paths.append({'path': att['path'], 'fp': fp})
                     except Exception:
                         logger.exception("Failed to prepare attachment for Discord")
             content = f"**{author}**: {text}" if text else f"**{author}**"
@@ -161,5 +196,16 @@ class DiscordBridge:
                 await channel.send(content, files=files)
             else:
                 await channel.send(content)
+
+            # cleanup temporary files and close file handles
+            for t in temp_paths:
+                try:
+                    t['fp'].close()
+                except Exception:
+                    pass
+                try:
+                    os.unlink(t['path'])
+                except Exception:
+                    pass
         except Exception:
             logger.exception("Failed to post inbound message to Discord")
