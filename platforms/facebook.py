@@ -1,3 +1,9 @@
+"""platforms/facebook.py
+Stub pour Facebook Messenger.
+"""
+
+def start(discord_bridge):
+    raise NotImplementedError("Facebook Messenger bridge not implemented")
 # platforms/facebook.py
 """
 Facebook Messenger stub — best-effort. Implement with facebook-chat-api, fbchat or graph API if available.
