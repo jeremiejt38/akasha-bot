@@ -1,3 +1,23 @@
+# Byte-compiled / cache
+__pycache__/
+*.py[cod]
+
+# Env
+.env
+.env.local
+
+# SQLite
+data/*.db
+
+# Python virtual env
+venv/
+
+# Docker
+*.log
+
+# Editor
+.vscode/
+.idea/
 # .gitignore
 __pycache__/
 .env

@@ -1,3 +1,9 @@
+"""platforms/instagram.py
+Stub pour Instagram DM.
+"""
+
+def start(discord_bridge):
+    raise NotImplementedError("Instagram bridge not implemented")
 # platforms/instagram.py
 """
 Instagram DM stub — best-effort. Implement using an appropriate library or reverse-engineered approach.

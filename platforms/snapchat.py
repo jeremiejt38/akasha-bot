@@ -1,3 +1,9 @@
+"""platforms/snapchat.py
+Stub pour Snapchat (best effort).
+"""
+
+def start(discord_bridge):
+    raise NotImplementedError("Snapchat bridge not implemented")
 # platforms/snapchat.py
 """
 Snapchat stub — very much best-effort; there is no official public API for direct messaging automation.
