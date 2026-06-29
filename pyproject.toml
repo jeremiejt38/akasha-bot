@@ -1,0 +1,11 @@
+# pyproject.toml
+[project]
+name = "multiplaform-bridge-inbox-discord-bot"
+version = "0.1.0"
+requires-python = ">=3.11"
+description = "Unified inbox bridge bot scaffold"
+
+[project.dependencies]
+python-dotenv = "*"
+discord.py = "*"
+python-telegram-bot = "*"

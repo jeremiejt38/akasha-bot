@@ -1,0 +1,19 @@
+# docker-compose.yml
+version: '3.8'
+
+services:
+  bot:
+    build: .
+    container_name: bridge-bot
+    env_file: .env
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+
+  # Optional: whatsapp-web.js bridge (Node) — provide your own implementation in ./node_whatsapp
+  whatsapp:
+    build: ./node_whatsapp
+    env_file: .env
+    # This is optional: remove or implement the node_whatsapp service if you want WhatsApp support
+    deploy:
+      replicas: 0
