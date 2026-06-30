@@ -15,21 +15,20 @@ import tempfile
 import discord
 from discord.ext import commands
 
-INBOX_CATEGORY_NAME = "INBOX"
+INBOX_CATEGORY_NAME = os.getenv("INBOX_CATEGORY_NAME", "📥 INBOX")
 
 logger = logging.getLogger(__name__)
 
-# Threshold (in bytes) for keeping attachments in memory vs writing to disk
 THRESHOLD_MB = int(os.getenv("MAX_ATTACHMENT_MEMORY_MB", "5"))
 THRESHOLD_BYTES = THRESHOLD_MB * 1024 * 1024
 
 PLATFORM_CHANNEL_MARKERS = {
     "WA": os.getenv("CHANNEL_MARKER_WA", "🟢"),
-    "TL": os.getenv("CHANNEL_MARKER_TL", "✈️"),
-    "IG": os.getenv("CHANNEL_MARKER_IG", "📸"),
-    "FB": os.getenv("CHANNEL_MARKER_FB", "🔵"),
-    "SC": os.getenv("CHANNEL_MARKER_SC", "👻"),
-    "TK": os.getenv("CHANNEL_MARKER_TK", "🎵"),
+    "TL": os.getenv("CHANNEL_MARKER_TL", "🔵"),
+    "IG": os.getenv("CHANNEL_MARKER_IG", "🟣"),
+    "FB": os.getenv("CHANNEL_MARKER_FB", "🔷"),
+    "SC": os.getenv("CHANNEL_MARKER_SC", "🟡"),
+    "TK": os.getenv("CHANNEL_MARKER_TK", "🔴"),
 }
 
 PLATFORM_ASCII_PREFIXES = {
