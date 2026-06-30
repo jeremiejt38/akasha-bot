@@ -1,4 +1,5 @@
-discord.py>=2.3.2
-python-dotenv>=1.0.0
-python-telegram-bot>=20.0
-aiosqlite>=0.18.0
+discord.py
+python-telegram-bot
+python-dotenv
+aiosqlite
+aiohttp
