@@ -136,15 +136,17 @@ class DiscordBridge:
         value = re.sub(r"-+", "-", value).strip("-")
         return value or "user"
 
-    def _build_channel_name_candidates(self, platform_tag: str, platform_user_id: str, display_name: str):
+    def _build_channel_name_candidates(self, platform_tag: str, display_name: str):
         safe_name = self._slugify_display_name(display_name)
-        suffix = str(platform_user_id)[-6:]
         emoji_marker = PLATFORM_CHANNEL_MARKERS.get(platform_tag, platform_tag.lower())
         ascii_prefix = PLATFORM_ASCII_PREFIXES.get(platform_tag, platform_tag.lower())
 
-        emoji_candidate = f"{emoji_marker}-{safe_name}-{suffix}".lower()
-        ascii_candidate = f"{ascii_prefix}-{safe_name}-{suffix}".lower()
-        return [emoji_candidate, ascii_candidate]
+        emoji_base = f"{emoji_marker}-{safe_name}".lower()
+        ascii_base = f"{ascii_prefix}-{safe_name}".lower()
+
+        emoji_candidates = [emoji_base] + [f"{emoji_base}-{i}" for i in range(1, 100)]
+        ascii_candidates = [ascii_base] + [f"{ascii_base}-{i}" for i in range(1, 100)]
+        return emoji_candidates + ascii_candidates
 
     async def ensure_inbox_category(self):
         try:
@@ -163,32 +165,37 @@ class DiscordBridge:
             raise
 
     async def get_or_create_channel_for(self, platform_tag: str, platform_user_id: str, display_name: str):
-        candidates = self._build_channel_name_candidates(platform_tag, platform_user_id, display_name)
+        candidates = self._build_channel_name_candidates(platform_tag, display_name)
         try:
             guild = self.bot.get_guild(self.guild_id)
             if guild is None:
                 guild = await self.bot.fetch_guild(self.guild_id)
             category = await self.ensure_inbox_category()
 
+            existing_for_mapping = await self.db.get_mapping(platform_tag, platform_user_id)
+            if existing_for_mapping:
+                existing_channel = guild.get_channel(existing_for_mapping)
+                if existing_channel:
+                    return existing_channel
+
             for candidate_name in candidates:
                 existing = discord.utils.get(category.text_channels, name=candidate_name)
                 if existing:
-                    await self.db.set_mapping(platform_tag, platform_user_id, existing.id)
-                    return existing
+                    existing_mapping = await self.db.get_mapping_by_channel(existing.id)
+                    if existing_mapping == (platform_tag, platform_user_id):
+                        await self.db.set_mapping(platform_tag, platform_user_id, existing.id)
+                        return existing
+                    continue
 
-            last_error = None
-            for candidate_name in candidates:
                 try:
                     channel = await guild.create_text_channel(candidate_name, category=category)
                     await self.db.set_mapping(platform_tag, platform_user_id, channel.id)
                     return channel
-                except Exception as e:
-                    last_error = e
-                    logger.warning("Failed to create channel with name '%s', trying fallback if available", candidate_name)
+                except Exception:
+                    logger.warning("Failed to create channel with name '%s', trying next candidate", candidate_name)
+                    continue
 
-            if last_error:
-                raise last_error
-            raise RuntimeError("Unable to create channel for unknown reason")
+            raise RuntimeError("Unable to create a unique channel name")
         except discord.Forbidden:
             logger.exception("Bot lacks permission to create or access channel")
             raise

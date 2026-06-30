@@ -38,26 +38,29 @@ async def main():
     discord = DiscordBridge(db=db, guild_id=discord_guild_id, admin_id=discord_admin_id)
     await discord.start(discord_token)
 
-    webhook_server = WebhookServer(discord)
-    await webhook_server.start()
-
     telegram = TelegramPlatform(token=os.getenv("TELEGRAM_TOKEN"), discord=discord, db=db)
     discord.register_platform_handler("TL", telegram)
 
     whatsapp = WhatsAppHTTPPlatform(discord=discord, db=db)
     discord.register_platform_handler("WA", whatsapp)
 
+    instagram = InstagramPlatform(discord=discord, db=db)
+    discord.register_platform_handler("IG", instagram)
+
+    webhook_server = WebhookServer(discord, instagram=instagram)
+    await webhook_server.start()
+
     if os.getenv("TELEGRAM_TOKEN"):
         asyncio.create_task(_start_platform(telegram, "Telegram"))
     else:
         logger.info("TELEGRAM_TOKEN not set; Telegram connector will not be started.")
 
-    instagram = InstagramPlatform(discord=discord, db=db)
+    asyncio.create_task(_start_platform(instagram, "Instagram"))
+
     facebook = FacebookPlatform(discord=discord, db=db)
     snapchat = SnapchatPlatform(discord=discord, db=db)
     tiktok = TikTokPlatform(discord=discord, db=db)
 
-    discord.register_platform_handler("IG", instagram)
     discord.register_platform_handler("FB", facebook)
     discord.register_platform_handler("SC", snapchat)
     discord.register_platform_handler("TK", tiktok)

@@ -6,11 +6,13 @@ from aiohttp import web
 logger = logging.getLogger(__name__)
 
 class WebhookServer:
-    def __init__(self, discord):
+    def __init__(self, discord, instagram=None):
         self.discord = discord
+        self.instagram = instagram
         self.host = os.getenv("WEBHOOK_HOST", "0.0.0.0")
         self.port = int(os.getenv("WEBHOOK_PORT", "8000"))
         self.api_token = os.getenv("BRIDGE_API_TOKEN", "")
+        self.meta_verify_token = os.getenv("META_VERIFY_TOKEN", "")
         self.runner = None
         self.site = None
 
@@ -51,12 +53,37 @@ class WebhookServer:
             logger.exception("Failed handling WhatsApp webhook")
             return web.json_response({"error": "internal_error"}, status=500)
 
+    async def meta_webhook_verify(self, request: web.Request):
+        mode = request.query.get("hub.mode")
+        token = request.query.get("hub.verify_token")
+        challenge = request.query.get("hub.challenge")
+
+        if mode == "subscribe" and token and token == self.meta_verify_token:
+            logger.info("Meta webhook verification succeeded")
+            return web.Response(text=challenge or "")
+
+        logger.warning("Meta webhook verification failed")
+        return web.Response(status=403, text="forbidden")
+
+    async def meta_webhook(self, request: web.Request):
+        try:
+            payload = await request.json()
+            logger.info("Meta webhook payload received")
+            if self.instagram:
+                await self.instagram.handle_webhook(payload)
+            return web.json_response({"ok": True})
+        except Exception:
+            logger.exception("Failed handling Meta webhook")
+            return web.json_response({"error": "internal_error"}, status=500)
+
     async def health(self, request: web.Request):
         return web.json_response({"ok": True})
 
     async def start(self):
         app = web.Application()
         app.router.add_post("/webhooks/whatsapp", self.whatsapp_webhook)
+        app.router.add_get("/webhooks/meta", self.meta_webhook_verify)
+        app.router.add_post("/webhooks/meta", self.meta_webhook)
         app.router.add_get("/health", self.health)
 
         self.runner = web.AppRunner(app)
