@@ -6,8 +6,8 @@ services:
       - ./data:/app/data
     restart: unless-stopped
     networks:
-      - multibridge-net
       - plex-backend
+      - multibridge-net
     labels:
       - traefik.enable=true
       - traefik.http.routers.bot.rule=Host(`bot.akasha.ing`)
