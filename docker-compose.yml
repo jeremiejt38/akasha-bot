@@ -7,7 +7,7 @@ services:
     restart: unless-stopped
     networks:
       - plex-backend
-      - multibridge-net
+      - z-multibridge-net
     labels:
       - traefik.enable=true
       - traefik.http.routers.bot.rule=Host(`bot.akasha.ing`)
@@ -29,7 +29,7 @@ services:
       - ./node_whatsapp/session:/app/session
       - ./data/tmp:/tmp
     networks:
-      - multibridge-net
+      - z-multibridge-net
     deploy:
       resources:
         limits:
@@ -37,6 +37,6 @@ services:
           memory: 512M
 
 networks:
-  multibridge-net:
+  z-multibridge-net:
   plex-backend:
     external: true
