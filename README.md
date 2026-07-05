@@ -47,9 +47,9 @@ For plain Docker Compose usage, the project still provides a `docker-compose.yml
 
 For deployment behind an existing Traefik reverse proxy (e.g. on the Akasha server):
 
-1. Ensure a Docker network named `traefik` exists:
+1. Ensure a Docker network named `plex-backend` exists:
    ```bash
-   docker network create traefik
+   docker network create plex-backend
    ```
 2. Copy `.env.example` to `.env` and fill it in. Keep the Docker service defaults:
    - `WHATSAPP_SERVICE_URL=http://whatsapp:3001`
