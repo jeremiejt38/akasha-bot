@@ -22,6 +22,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . /app
 
 # Basic healthcheck: verify process is running
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 CMD ["/bin/sh", "-c", "pgrep -f 'python main.py' || exit 1"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 CMD ["/bin/sh", "-c", "kill -0 1 || exit 1"]
 
 CMD ["python", "main.py"]
