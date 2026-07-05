@@ -19,4 +19,4 @@ class FacebookPlatform(MetaPlatform):
         super().__init__(discord, db, platform_tag="FB", page_id_env="FACEBOOK_PAGE_ID")
 
     async def start(self):
-        logger.info("Facebook Messenger platform initialized (page_id=%s)", self.page_id or "not set")
+        await super().start()

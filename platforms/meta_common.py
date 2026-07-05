@@ -34,8 +34,17 @@ class MetaPlatform:
         self.discord = discord
         self.db = db
         self.platform_tag = platform_tag
+        self.page_id_env = page_id_env
         self.page_id = os.getenv(page_id_env, "")
         self.client = MetaClient()
+
+    async def start(self):
+        if not self.page_id:
+            logger.warning("%s account/page ID not configured (set %s)", self.platform_tag, self.page_id_env)
+        if not self.client.page_access_token:
+            logger.warning("%s page access token not configured (set META_PAGE_ACCESS_TOKEN)", self.platform_tag)
+        if self.page_id and self.client.page_access_token:
+            logger.info("%s platform initialized (account_id=%s)", self.platform_tag, self.page_id)
 
     async def _get_display_name(self, user_id: str) -> str:
         fallback = f"{self.platform_tag} {user_id[-6:]}"

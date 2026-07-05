@@ -16,4 +16,4 @@ class InstagramPlatform(MetaPlatform):
         super().__init__(discord, db, platform_tag="IG", page_id_env="INSTAGRAM_BUSINESS_ACCOUNT_ID")
 
     async def start(self):
-        logger.info("Instagram platform initialized (account_id=%s)", self.page_id or "not set")
+        await super().start()

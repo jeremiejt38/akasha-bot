@@ -69,6 +69,22 @@ Set `DEBUG=true` in `.env` to enable verbose logging. In debug mode, the bot pri
 ## WhatsApp low-power mode
 The WhatsApp bridge now runs Chromium with energy-saving flags (GPU disabled, no audio, no extensions, background networking disabled, etc.) and caps the Node.js heap. You can slow it down further with `WA_MESSAGE_PROCESS_DELAY_MS` or skip media downloads with `WA_SKIP_MEDIA`. See `.env.example` and `node_whatsapp/README.md` for details.
 
+## Meta (Instagram & Facebook Messenger)
+
+Configure the Meta webhook endpoint once for both platforms.
+
+1. Create a Facebook App and enable **Messenger** and/or **Instagram** products.
+2. Generate a **Page Access Token** (`META_PAGE_ACCESS_TOKEN`) for the linked Facebook Page.
+3. Set `META_VERIFY_TOKEN` to a secret value used by Meta to verify the webhook URL.
+4. Configure the webhook in the Meta Developer portal:
+   - Callback URL: `https://<your-bot>/webhooks/meta`
+   - Verify token: the value of `META_VERIFY_TOKEN`
+   - Subscribe to `messages` and `messaging_postbacks` events.
+5. For Instagram, set `INSTAGRAM_BUSINESS_ACCOUNT_ID` to the Instagram Business Account ID linked to the page.
+6. For Facebook Messenger, set `FACEBOOK_PAGE_ID` to the page ID.
+
+Inbound messages are routed automatically based on the webhook payload (`object: instagram` or `object: page`).
+
 ## Security
 Do NOT commit real credentials. Use `.env` and a proper secrets manager for production.
 
