@@ -1,0 +1,49 @@
+name: multiplaform-bridge-inbox
+env_file:
+  - .env
+services:
+  bot:
+    type: python:3.11
+    scanner: false
+    command: /app/lando-bot.sh
+    build:
+      - pip install -r /app/requirements.txt
+    overrides:
+      volumes:
+        - ./data:/app/data
+  whatsapp:
+    type: compose
+    scanner: false
+    services:
+      container_name: bridge-whatsapp
+      build:
+        context: ./node_whatsapp
+        dockerfile: Dockerfile
+      working_dir: /app/node_whatsapp
+      command: npm start
+      volumes:
+        - ./node_whatsapp/session:/app/session
+        - ./data/tmp:/tmp
+        - node_modules:/app/node_whatsapp/node_modules
+      deploy:
+        resources:
+          limits:
+            cpus: '1.0'
+            memory: 512M
+    volumes:
+      node_modules:
+proxy:
+  bot:
+    - multibridge-bot.lndo.site:8000
+tooling:
+  python:
+    service: bot
+    description: Run Python inside the bot container
+  pip:
+    service: bot
+    cmd: pip
+    description: Run pip inside the bot container
+  check:
+    service: bot
+    description: Run Python syntax check
+    cmd: python -c "import ast, glob; [ast.parse(open(f).read()) for f in glob.glob('*.py') + glob.glob('platforms/*.py')]; print('Python syntax OK')"

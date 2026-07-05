@@ -1,17 +1,14 @@
 """platforms/snapchat.py
-Stub pour Snapchat (best effort).
-"""
+Snapchat connector using an external HTTP bridge service.
 
-def start(discord_bridge):
-    raise NotImplementedError("Snapchat bridge not implemented")
-# platforms/snapchat.py
+There is no official public API for Snapchat direct messaging automation, so
+this connector expects a separate service (e.g. a private automation proxy) at
+SNAPCHAT_SERVICE_URL implementing the same /send + webhook contract as the
+WhatsApp bridge.
 """
-Snapchat stub — very much best-effort; there is no official public API for direct messaging automation.
-"""
-class SnapchatPlatform:
+from platforms.external_http import ExternalHTTPPlatform
+
+
+class SnapchatPlatform(ExternalHTTPPlatform):
     def __init__(self, discord, db):
-        self.discord = discord
-        self.db = db
-
-    async def send(self, platform_user_id: str, text: str):
-        print(f"[SNAPCHAT] send to {platform_user_id}: {text}")
+        super().__init__(discord, db, platform_tag="SC", service_url_env="SNAPCHAT_SERVICE_URL")

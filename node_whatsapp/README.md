@@ -18,6 +18,14 @@ It is intended to be run as a separate container/service and communicate with th
 - `WA_MAX_MEDIA_BYTES` (default: `20971520` = 20MB): media over this size is written to disk before forwarding
 - `BRIDGE_WEBHOOK_URL` (default: `http://bot:8000/webhooks/whatsapp`): Python bridge webhook endpoint for inbound WA messages
 - `BRIDGE_API_TOKEN` (optional): bearer token used to authenticate requests to the Python bridge
+- `WA_LOW_POWER` (default: `true`): enables energy-saving browser flags (set to `false` to disable)
+- `WA_SKIP_MEDIA` (default: `false`): when `true`, inbound media is not downloaded/forwarded (text only)
+- `WA_MESSAGE_PROCESS_DELAY_MS` (default: `0`): artificial delay before forwarding each inbound message, trading speed for lower CPU load
+- `WA_JS_HEAP_MB` (default: `512`): Node.js max heap size in megabytes
+- `WA_PUPPETEER_ARGS` (optional): override the default Chromium args with a comma-separated list (advanced)
+
+## Low-power mode
+By default the bridge runs Chromium with a set of flags that disable GPU, smooth scrolling, background networking, extensions, audio, and other non-essential features to reduce CPU and memory usage. This makes the WhatsApp bridge slower to refresh and forward messages, but keeps it lighter.
 
 ## QR code authentication flow
 1. Start the `node_whatsapp` service.

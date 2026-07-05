@@ -1,0 +1,9 @@
+# Override for plain Docker Compose usage: inject the .env file into containers.
+# Lando uses its own top-level env_file and does not need this override.
+services:
+  bot:
+    env_file:
+      - .env
+  whatsapp:
+    env_file:
+      - .env

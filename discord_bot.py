@@ -7,13 +7,19 @@ This version supports streaming large attachments to temporary files to avoid us
 and attempts emoji-based channel prefixes with a safe ASCII fallback.
 """
 import asyncio
+import datetime
+import json
 import logging
 import io
 import os
 import re
 import tempfile
+import aiohttp
 import discord
+from discord import app_commands
 from discord.ext import commands
+from integrations.auto_responder import AutoResponder
+from integrations.health_checker import HealthChecker, CONNECTION_CHECK_MARKER
 
 INBOX_CATEGORY_NAME = os.getenv("INBOX_CATEGORY_NAME", "📥 INBOX")
 
@@ -22,6 +28,8 @@ logger = logging.getLogger(__name__)
 THRESHOLD_MB = int(os.getenv("MAX_ATTACHMENT_MEMORY_MB", "5"))
 THRESHOLD_BYTES = THRESHOLD_MB * 1024 * 1024
 
+MAX_MESSAGE_LENGTH = int(os.getenv("MAX_MESSAGE_LENGTH", "2000"))
+
 PLATFORM_CHANNEL_MARKERS = {
     "WA": os.getenv("CHANNEL_MARKER_WA", "🟢"),
     "TL": os.getenv("CHANNEL_MARKER_TL", "🔵"),
@@ -29,6 +37,7 @@ PLATFORM_CHANNEL_MARKERS = {
     "FB": os.getenv("CHANNEL_MARKER_FB", "🔷"),
     "SC": os.getenv("CHANNEL_MARKER_SC", "🟡"),
     "TK": os.getenv("CHANNEL_MARKER_TK", "🔴"),
+    "DC": os.getenv("CHANNEL_MARKER_DC", "🟠"),
 }
 
 PLATFORM_ASCII_PREFIXES = {
@@ -38,10 +47,21 @@ PLATFORM_ASCII_PREFIXES = {
     "FB": "fb",
     "SC": "sc",
     "TK": "tk",
+    "DC": "dc",
 }
 
+
+def _truncate_text_for_discord(text: str, author: str, limit: int = MAX_MESSAGE_LENGTH) -> str:
+    content = f"**{author}**: {text}" if text else f"**{author}**"
+    if len(content) <= limit:
+        return content
+    reserve = len(f"**{author}**: ") + 3
+    truncated = text[: max(0, limit - reserve)] + "..."
+    return f"**{author}**: {truncated}"
+
+
 class DiscordBridge:
-    def __init__(self, db, guild_id: int, admin_id: int):
+    def __init__(self, db, guild_id: int, admin_id: int, overseerr_client=None, wizarr_client=None, tracearr_client=None):
         intents = discord.Intents.default()
         intents.message_content = True
         intents.guilds = True
@@ -52,6 +72,12 @@ class DiscordBridge:
         self.guild_id = guild_id
         self.admin_id = admin_id
         self.platform_handlers = {}
+        self.overseerr_client = overseerr_client
+        self.wizarr_client = wizarr_client
+        self.tracearr_client = tracearr_client
+        enable_auto_responder = os.getenv("AUTO_RESPONDER_ENABLED", "true").lower() in ("1", "true", "yes")
+        self.auto_responder = AutoResponder() if enable_auto_responder else None
+        self.health_checker = HealthChecker()
         self._ready_event = asyncio.Event()
         self._closed = False
         self._bot_task = None
@@ -59,6 +85,13 @@ class DiscordBridge:
         @self.bot.event
         async def on_ready():
             logger.info(f"Discord bot ready as {self.bot.user}")
+            try:
+                commands_before = [c.name for c in self.bot.tree.get_commands()]
+                logger.info("Commands in tree before sync: %s", commands_before)
+                synced = await self.bot.tree.sync(guild=discord.Object(id=self.guild_id))
+                logger.info("Synced commands for guild %s: %s", self.guild_id, [c.name for c in synced])
+            except Exception:
+                logger.exception("Failed to sync slash commands")
             self._ready_event.set()
 
         @self.bot.event
@@ -66,7 +99,12 @@ class DiscordBridge:
             if message.author.id == self.bot.user.id:
                 return
 
-            if message.guild is None or message.guild.id != self.guild_id:
+            if message.guild is None:
+                if message.author.id != self.admin_id:
+                    await self._handle_inbound_dm(message)
+                return
+
+            if message.guild.id != self.guild_id:
                 return
 
             if message.author.id == self.admin_id:
@@ -74,6 +112,7 @@ class DiscordBridge:
                 mapping = await self.db.get_mapping_by_channel(channel_id)
                 if mapping:
                     platform, platform_user_id = mapping
+                    logger.debug("Admin reply in channel %s -> platform=%s user=%s", channel_id, platform, platform_user_id)
                     handler = self.platform_handlers.get(platform)
                     if handler and hasattr(handler, 'send'):
                         attachments = []
@@ -106,11 +145,386 @@ class DiscordBridge:
                             except Exception:
                                 logger.exception(f"Failed to download attachment {getattr(att, 'url', '<unknown>')}")
                         if message.content or attachments:
+                            logger.debug("Forwarding admin reply to %s (text=%r, attachments=%s)", platform, message.content[:200], len(attachments))
                             try:
                                 await handler.send(platform_user_id, message.content or "", attachments=attachments)
                             except Exception as e:
                                 logger.exception(f"Failed to forward admin message to platform {platform}: {e}")
+                    else:
+                        logger.warning("No send handler for platform %s", platform)
+                else:
+                    logger.debug("No mapping found for channel %s", channel_id)
                 return
+
+        whatsapp_cmd = app_commands.Command(
+            name="whatsapp",
+            description="Regenerate WhatsApp QR code and send it via DM",
+            callback=self._whatsapp_command
+        )
+        self.bot.tree.add_command(whatsapp_cmd, guild=discord.Object(id=self.guild_id))
+
+        link_cmd = app_commands.Command(
+            name="link",
+            description="Lie ton compte Discord à ton compte Overseerr avec ton email",
+            callback=self._link_command
+        )
+        self.bot.tree.add_command(link_cmd, guild=discord.Object(id=self.guild_id))
+
+        invite_cmd = app_commands.Command(
+            name="invite",
+            description="Créer une invitation Wizarr et l'envoyer à l'utilisateur de cet INBOX (admin only)",
+            callback=self._invite_command
+        )
+        self.bot.tree.add_command(invite_cmd, guild=discord.Object(id=self.guild_id))
+
+    async def _handle_inbound_dm(self, message: discord.Message):
+        try:
+            user_id = str(message.author.id)
+            display_name = message.author.display_name or message.author.name or user_id
+            logger.debug("Discord DM received from user %s", user_id)
+
+            attachments = []
+            for att in message.attachments:
+                try:
+                    size = getattr(att, "size", None) or 0
+                    if size and size >= THRESHOLD_BYTES:
+                        tmp = tempfile.NamedTemporaryFile(delete=False)
+                        tmp.close()
+                        try:
+                            await att.save(tmp.name)
+                            attachments.append({
+                                "path": tmp.name,
+                                "filename": att.filename,
+                                "content_type": att.content_type,
+                            })
+                        except Exception:
+                            try:
+                                os.unlink(tmp.name)
+                            except Exception:
+                                pass
+                            raise
+                    else:
+                        data = await att.read()
+                        attachments.append({
+                            "bytes": data,
+                            "filename": att.filename,
+                            "content_type": att.content_type,
+                        })
+                except Exception:
+                    logger.exception("Failed to download Discord DM attachment from user %s", user_id)
+
+            await self.post_inbound_message(
+                "DC", user_id, display_name, message.content or "", attachments=attachments
+            )
+        except Exception:
+            logger.exception("Failed to handle Discord DM from user %s", message.author.id)
+
+    async def _whatsapp_command(self, interaction: discord.Interaction):
+        if interaction.user.id != self.admin_id:
+            if interaction.response.is_done():
+                await interaction.followup.send("Only the admin can use this command.", ephemeral=True)
+            else:
+                await interaction.response.send_message("Only the admin can use this command.", ephemeral=True)
+            return
+
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        base_url = os.getenv("WHATSAPP_SERVICE_URL", "http://localhost:3001")
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(f"{base_url}/restart", timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                    if resp.status >= 400:
+                        await interaction.followup.send("Failed to restart the WhatsApp bridge.", ephemeral=True)
+                        return
+
+                qr_text = None
+                for _ in range(15):
+                    await asyncio.sleep(2)
+                    async with session.get(f"{base_url}/qr", timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                        if resp.status == 200:
+                            data = await resp.json()
+                            qr_text = data.get("qr_text")
+                            if qr_text:
+                                break
+
+            if not qr_text:
+                await interaction.followup.send("No QR code was generated. WhatsApp may already be connected.", ephemeral=True)
+                return
+
+            try:
+                await interaction.user.send(f"Scan this QR code with WhatsApp to authenticate:\n```\n{qr_text}\n```")
+                await interaction.followup.send("QR code sent to your DMs.", ephemeral=True)
+            except discord.Forbidden:
+                await interaction.followup.send("I cannot send you a DM. Please enable direct messages.", ephemeral=True)
+        except Exception as e:
+            logger.exception("WhatsApp command failed")
+            await interaction.followup.send(f"Error: {e}", ephemeral=True)
+
+    async def _link_command(self, interaction: discord.Interaction, email: str):
+        if not self.overseerr_client:
+            await interaction.response.send_message("La liaison de compte n'est pas configurée.", ephemeral=True)
+            return
+
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        email_clean = email.lower().strip()
+        requester_discord_id = str(interaction.user.id)
+
+        try:
+            overseerr_user = await self.overseerr_client.find_user_by_email(email_clean)
+            if not overseerr_user:
+                await interaction.followup.send(
+                    "Aucun compte actif trouvé avec cette adresse email.", ephemeral=True
+                )
+                return
+
+            overseerr_id = overseerr_user.get("id")
+            existing_discord_ids = await self.overseerr_client.get_user_discord_ids(overseerr_id)
+            existing_ids_str = [str(d) for d in existing_discord_ids]
+
+            if requester_discord_id in existing_ids_str:
+                await interaction.followup.send(
+                    "Ton compte Discord est déjà lié à ce compte Overseerr.", ephemeral=True
+                )
+                return
+
+            if existing_discord_ids:
+                await interaction.followup.send(
+                    "Ce compte email est déjà lié à un autre compte Discord.", ephemeral=True
+                )
+                return
+
+            await self.overseerr_client.update_user_discord_id(overseerr_id, requester_discord_id)
+
+            # Sync Wizarr invitation info
+            wizarr_invite_code = None
+            wizarr_invite_expires = None
+            if self.wizarr_client:
+                wizarr_invite = await self.wizarr_client.find_invitation_by_email(email_clean)
+                if wizarr_invite:
+                    wizarr_invite_code = wizarr_invite.get("code")
+                    wizarr_invite_expires = wizarr_invite.get("expires")
+
+            # Sync Tracearr data
+            tracearr_data = None
+            plex_username = overseerr_user.get("plexUsername")
+            if self.tracearr_client and plex_username:
+                tracearr_data = await self.tracearr_client.find_user_by_username(plex_username)
+
+            await self.db.set_user(
+                discord_id=requester_discord_id,
+                email=email_clean,
+                discord_username=interaction.user.name,
+                overseerr_id=overseerr_id,
+                overseerr_username=overseerr_user.get("username") or overseerr_user.get("displayName"),
+                overseerr_plex_username=plex_username,
+                overseerr_discord_ids=",".join([requester_discord_id] + existing_ids_str),
+                wizarr_invite_code=wizarr_invite_code,
+                wizarr_invite_expires=wizarr_invite_expires,
+                tracearr_user_id=tracearr_data.get("id") if tracearr_data else None,
+                tracearr_username=tracearr_data.get("username") if tracearr_data else None,
+                tracearr_trust_score=tracearr_data.get("trustScore") if tracearr_data else None,
+                tracearr_total_violations=tracearr_data.get("totalViolations") if tracearr_data else None,
+                tracearr_session_count=tracearr_data.get("sessionCount") if tracearr_data else None,
+                tracearr_last_activity=tracearr_data.get("lastActivityAt") if tracearr_data else None,
+                tracearr_stats=json.dumps(tracearr_data) if tracearr_data else None,
+                updated_at=datetime.datetime.utcnow().isoformat(),
+            )
+
+            lines = [f"Compte lié avec succès à **{overseerr_user.get('email', email_clean)}** ({overseerr_user.get('displayName') or overseerr_user.get('plexUsername') or 'utilisateur'})."]
+            if plex_username:
+                lines.append(f"Plex : `{plex_username}`")
+            if wizarr_invite_code:
+                lines.append(f"Invitation Wizarr : `{wizarr_invite_code}`")
+            if tracearr_data:
+                lines.append(f"Trust score Tracearr : {tracearr_data.get('trustScore', 'N/A')}")
+            await interaction.followup.send("\n".join(lines), ephemeral=True)
+        except Exception:
+            logger.exception("Link command failed for email=%s discord=%s", email_clean, requester_discord_id)
+            await interaction.followup.send(
+                "Une erreur s'est produite pendant la liaison. Vérifie la configuration.", ephemeral=True
+            )
+
+    @staticmethod
+    def _parse_invite_type(type_str: str) -> tuple[int, bool]:
+        """Return (duration_days, is_trial)."""
+        type_str = type_str.lower().strip()
+        if type_str in ("free", "test", "essai"):
+            return int(os.getenv("TRIAL_DURATION_DAYS", "14")), True
+        match = re.match(r"^(\d+)([jsma])$", type_str)
+        if not match:
+            raise ValueError("Type invalide. Utilise 'free', 'test', 'essai' ou <nombre><j|s|m|a>.")
+        amount = int(match.group(1))
+        multipliers = {"j": 1, "s": 7, "m": 30, "a": 365}
+        return amount * multipliers[match.group(2)], False
+
+    async def _invite_command(self, interaction: discord.Interaction, type: str):
+        if interaction.user.id != self.admin_id:
+            await interaction.response.send_message("Seul l'admin peut utiliser cette commande.", ephemeral=True)
+            return
+
+        if not self.wizarr_client:
+            await interaction.response.send_message("L'intégration Wizarr n'est pas configurée.", ephemeral=True)
+            return
+
+        channel = interaction.channel
+        if not isinstance(channel, discord.TextChannel) or channel.category.name != INBOX_CATEGORY_NAME:
+            await interaction.response.send_message("Cette commande ne peut être utilisée que dans un canal INBOX.", ephemeral=True)
+            return
+
+        mapping = await self.db.get_mapping_by_channel(channel.id)
+        if not mapping:
+            await interaction.response.send_message("Aucun destinataire lié à ce canal.", ephemeral=True)
+            return
+
+        platform, platform_user_id = mapping
+        await interaction.response.defer(ephemeral=True, thinking=True)
+
+        try:
+            duration_days, is_trial = self._parse_invite_type(type)
+        except ValueError as e:
+            await interaction.followup.send(str(e), ephemeral=True)
+            return
+
+        try:
+            # Discord DM stacking: add remaining days from a used non-expired invitation
+            if platform == "DC":
+                duration_days = await self._compute_stacked_duration_days(platform_user_id, duration_days)
+
+            invite = await self._create_wizarr_invitation(duration_days, is_trial)
+            code = invite.get("code")
+            base_url = self.wizarr_client.base_url.replace("http://", "https://")
+            url = f"{base_url}/j/{code}"
+
+            is_existing = await self._is_existing_user(platform, platform_user_id)
+            message = self._build_invite_message(is_trial, is_existing, code, url, duration_days)
+
+            # Forward the invite message to the recipient platform
+            handler = self.platform_handlers.get(platform)
+            if not handler:
+                await interaction.followup.send(f"Aucun handler pour la plateforme {platform}.", ephemeral=True)
+                return
+            await handler.send(platform_user_id, message)
+
+            # Store the invitation for Discord users so stacking works next time
+            if platform == "DC":
+                await self.db.update_user(
+                    platform_user_id,
+                    wizarr_invite_code=code,
+                    wizarr_invite_expires=invite.get("expires"),
+                    updated_at=datetime.datetime.utcnow().isoformat(),
+                )
+
+            await interaction.followup.send(
+                f"Invitation `{code}` créée ({duration_days} jours) et envoyée à {platform}.", ephemeral=True
+            )
+        except Exception:
+            logger.exception("Invite command failed in channel %s", channel.id)
+            await interaction.followup.send("Une erreur s'est produite en créant l'invitation.", ephemeral=True)
+
+    async def _compute_stacked_duration_days(self, discord_id: str, requested_days: int) -> int:
+        user = await self.db.get_user_by_discord_id(discord_id)
+        if not user:
+            return requested_days
+        code = user.get("wizarr_invite_code")
+        if not code:
+            return requested_days
+        try:
+            inv = await self.wizarr_client.get_invitation_by_code(code)
+            if not inv or inv.get("status") != "used":
+                return requested_days
+            expires = inv.get("expires")
+            if not expires:
+                return requested_days
+            expires_dt = datetime.datetime.fromisoformat(expires.replace("Z", "+00:00"))
+            now = datetime.datetime.now(datetime.timezone.utc)
+            remaining = (expires_dt - now).total_seconds() / 86400
+            if remaining > 0:
+                return requested_days + int(remaining)
+        except Exception:
+            logger.exception("Failed to compute stacked duration for discord_id=%s", discord_id)
+        return requested_days
+
+    async def _is_existing_user(self, platform: str, platform_user_id: str) -> bool:
+        if platform != "DC" or not self.wizarr_client:
+            return False
+        user = await self.db.get_user_by_discord_id(platform_user_id)
+        if not user or not user.get("email"):
+            return False
+        wizarr_user = await self.wizarr_client.find_user_by_email(user["email"])
+        return bool(wizarr_user)
+
+    async def _create_wizarr_invitation(self, duration_days: int, is_trial: bool):
+        server_ids = [int(s) for s in os.getenv("WIZARR_INVITE_SERVER_IDS", "1,2").split(",") if s.strip()]
+        if is_trial:
+            expires_in_days = duration_days
+        else:
+            expires_in_days = int(os.getenv("WIZARR_INVITE_EXPIRES_DAYS", "7"))
+        return await self.wizarr_client.create_invitation(
+            server_ids=server_ids,
+            duration=str(duration_days),
+            expires_in_days=expires_in_days,
+            unlimited=False,
+            allow_downloads=True,
+            allow_live_tv=True,
+            allow_mobile_uploads=True,
+        )
+
+    @staticmethod
+    def _build_invite_message(is_trial: bool, is_existing: bool, code: str, url: str, duration_days: int) -> str:
+        akasha_url = os.getenv("AKASHA_INVITE_URL", "https://akasha.ing")
+        if is_trial:
+            return (
+                f"Bienvenue sur Akasha ton essaie de 2 semaines a commencé, pour rejoindre Akasha rend toi sur "
+                f"{akasha_url} clique le bouton \"Frappez aux portes\" tout en bas et entrez le code d'invitation suivant : {code}\n\n"
+                f"Ou tu peux utiliser le lien direct : {url}\n\n"
+                f"Une fois ton essais terminé contacte moi a nouveau si tu souhaite souscrire un Abonnement."
+            )
+        if is_existing:
+            return f"Pour valider le renouvellement de ton compte clique sur le lien suivant et assure toi de te connecter au bon compte Plex : {url}"
+        return (
+            f"Bienvenue ! Pour valider ton inscription à Akasha rend toi sur {akasha_url} clique le bouton "
+            f"\"Frappez aux portes\" tout en bas et entrez le code d'invitation suivant : {code}\n\n"
+            f"Ou tu peux utiliser le lien direct : {url}"
+        )
+
+    async def _get_user_data_for_inbound(self, platform_tag: str, platform_user_id: str):
+        if platform_tag == "DC":
+            return await self.db.get_user_by_discord_id(platform_user_id)
+        return None
+
+    async def _bump_channel_to_top(self, channel: discord.TextChannel):
+        try:
+            category = channel.category
+            if category is None:
+                return
+            same_category = [c for c in category.channels if isinstance(c, discord.TextChannel)]
+            if not same_category:
+                return
+            min_pos = min(c.position for c in same_category)
+            if channel.position == min_pos:
+                return
+            await channel.edit(position=min_pos)
+            logger.debug("Bumped channel %s to top of category %s", channel.id, category.id)
+        except Exception:
+            logger.exception("Failed to bump channel %s to top", channel.id)
+
+    async def _send_auto_response(self, platform_tag: str, platform_user_id: str, channel, text: str, user_data: dict):
+        try:
+            response = self.auto_responder.respond(text, user_data)
+            if not response:
+                return
+
+            if response == CONNECTION_CHECK_MARKER:
+                logger.info("Health check triggered for %s user=%s", platform_tag, platform_user_id)
+                results = await self.health_checker.check_all()
+                response = self.health_checker.format_results(results)
+
+            logger.info("Auto-responding to %s user=%s with matched answer", platform_tag, platform_user_id)
+            handler = self.platform_handlers.get(platform_tag)
+            if handler:
+                await handler.send(platform_user_id, response)
+            await channel.send(f"**Auto-reply**: {response}")
+        except Exception:
+            logger.exception("Auto-responder failed for %s user=%s", platform_tag, platform_user_id)
 
     async def start(self, token: str):
         loop = asyncio.get_event_loop()
@@ -134,6 +548,7 @@ class DiscordBridge:
         value = re.sub(r"\s+", "-", value)
         value = re.sub(r"[^a-z0-9\-]", "", value)
         value = re.sub(r"-+", "-", value).strip("-")
+        value = value[:80]
         return value or "user"
 
     def _build_channel_name_candidates(self, platform_tag: str, display_name: str):
@@ -166,6 +581,7 @@ class DiscordBridge:
 
     async def get_or_create_channel_for(self, platform_tag: str, platform_user_id: str, display_name: str):
         candidates = self._build_channel_name_candidates(platform_tag, display_name)
+        logger.debug("Resolving channel for %s user=%s display_name=%s (candidates=%s)", platform_tag, platform_user_id, display_name, len(candidates))
         try:
             guild = self.bot.get_guild(self.guild_id)
             if guild is None:
@@ -176,7 +592,9 @@ class DiscordBridge:
             if existing_for_mapping:
                 existing_channel = guild.get_channel(existing_for_mapping)
                 if existing_channel:
+                    logger.debug("Found existing channel %s for %s user=%s", existing_channel.id, platform_tag, platform_user_id)
                     return existing_channel
+                logger.debug("Mapped channel %s no longer exists for %s user=%s", existing_for_mapping, platform_tag, platform_user_id)
 
             for candidate_name in candidates:
                 existing = discord.utils.get(category.text_channels, name=candidate_name)
@@ -190,6 +608,7 @@ class DiscordBridge:
                 try:
                     channel = await guild.create_text_channel(candidate_name, category=category)
                     await self.db.set_mapping(platform_tag, platform_user_id, channel.id)
+                    logger.info("Created channel %s (%s) for %s user=%s", channel.id, candidate_name, platform_tag, platform_user_id)
                     return channel
                 except Exception:
                     logger.warning("Failed to create channel with name '%s', trying next candidate", candidate_name)
@@ -206,6 +625,7 @@ class DiscordBridge:
     async def post_inbound_message(self, platform_tag: str, platform_user_id: str, display_name: str, text: str, attachments=None):
         try:
             channel = await self.get_or_create_channel_for(platform_tag, platform_user_id, display_name)
+            logger.debug("Posting inbound %s message from %s to channel %s", platform_tag, platform_user_id, channel.id)
             author = f"[{platform_tag}]{display_name}"
             files = []
             temp_paths = []
@@ -223,20 +643,31 @@ class DiscordBridge:
                             temp_paths.append({'path': att['path'], 'fp': fp})
                     except Exception:
                         logger.exception("Failed to prepare attachment for Discord")
-            content = f"**{author}**: {text}" if text else f"**{author}**"
-            if files:
-                await channel.send(content, files=files)
-            else:
-                await channel.send(content)
+            original_content = f"**{author}**: {text}" if text else f"**{author}**"
+            content = _truncate_text_for_discord(text, author)
+            if content != original_content:
+                logger.debug("Truncated inbound message from %s to %s characters for Discord", len(original_content), len(content))
 
-            for t in temp_paths:
-                try:
-                    t['fp'].close()
-                except Exception:
-                    pass
-                try:
-                    os.unlink(t['path'])
-                except Exception:
-                    pass
+            try:
+                if files:
+                    await channel.send(content, files=files)
+                else:
+                    await channel.send(content)
+            finally:
+                for t in temp_paths:
+                    try:
+                        t['fp'].close()
+                    except Exception:
+                        pass
+                    try:
+                        os.unlink(t['path'])
+                    except Exception:
+                        pass
+
+            if self.auto_responder and text:
+                user_data = await self._get_user_data_for_inbound(platform_tag, platform_user_id)
+                await self._send_auto_response(platform_tag, platform_user_id, channel, text, user_data)
+
+            await self._bump_channel_to_top(channel)
         except Exception:
             logger.exception("Failed to post inbound message to Discord")

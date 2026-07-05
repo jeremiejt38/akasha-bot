@@ -7,10 +7,12 @@ __pycache__/
 .env.local
 
 # SQLite
-data/*.db
+data/
+*.db
 
 # Python virtual env
 venv/
+.venv/
 
 # Docker
 *.log
@@ -18,8 +20,12 @@ venv/
 # Editor
 .vscode/
 .idea/
-# .gitignore
-__pycache__/
-.env
-data/
-node_whatsapp/
+
+# Lando
+.lando/
+
+# WhatsApp bridge runtime files
+node_whatsapp/session/
+node_whatsapp/.wwebjs_auth/
+node_whatsapp/node_modules/
+node_whatsapp/*.log

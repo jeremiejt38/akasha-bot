@@ -1,54 +1,74 @@
-# multiplaform-bridge-inbox-discord-bot
+# Multiplaform Bridge Inbox - Discord unified inbox bot
 
+Bot Discord Python servant de bridge de messagerie unifiée.
 
-Bot Discord Python servant de bridge de messagerie unifié.
+This bot centralizes inbound messages from several platforms (Telegram, WhatsApp, Instagram, Facebook Messenger, Snapchat, TikTok) into a single Discord server, creating one channel per user and per platform.
 
-Ce dépôt contient le scaffold initial et les stubs pour les plateformes prioritaires (Telegram en priorité).
+## What it does
+- Ensures a Discord category named `INBOX` exists.
+- Creates/reuses per-user channels using a platform marker (e.g. `tl-jean`, `wa-jean`).
+- Forwards inbound messages from platforms to Discord (text + media where supported).
+- Forwards admin replies in Discord back to the correct platform user.
 
-Sommaire
-- README en français
-- structure modulaire dans platforms/
-- .env.example
-- Dockerfile + docker-compose.yml
+## Supported platforms
+- **Telegram**: text + media via `python-telegram-bot` v20.
+- **WhatsApp**: separate Node bridge using `whatsapp-web.js`, with a low-power/energy-saving mode enabled by default.
+- **Instagram**: Meta Messaging Graph API (webhook + reply).
+- **Facebook Messenger**: Meta Messaging Graph API (webhook + reply).
+- **Snapchat / TikTok**: HTTP bridge skeleton expecting a separate automation service at `SNAPCHAT_SERVICE_URL` / `TIKTOK_SERVICE_URL` (no official public DM API).
 
-Voir les issues pour la feuille de route.
-# README.md
-
-Multiplaform Bridge Inbox - minimal scaffold
-
-This repository provides a scaffold for a Discord-based unified inbox bot. The bot:
-- Ensures a Discord category named INBOX exists
-- Creates/reuses per-user channels using a platform prefix (e.g. [TL]jean)
-- Forwards inbound messages from platforms to Discord
-- Forwards admin replies in Discord back to the correct platform
-
-Included in this scaffold:
-- Discord core (discord_bot.py): manages INBOX category, per-user channels, forwards admin replies to platforms
-- SQLite database wrapper (database.py) using aiosqlite for async safety
-- Telegram integration (platforms/telegram.py) using python-telegram-bot v20 (async)
-- Stubs for WhatsApp/Instagram/Facebook/Snapchat/TikTok
-- Dockerfile and docker-compose.yml
-
-Quick start (development):
-1. Copy `.env.example` to `.env` and fill tokens/IDs (Discord token, guild id, admin id, telegram token)
+## Quick start
+1. Copy `.env.example` to `.env` and fill in the required values.
 2. Build and run with Docker Compose:
-   docker-compose up --build
+   ```bash
+   docker compose up --build
+   ```
 
-Telegram usage:
-- The Telegram connector uses polling and requires TELEGRAM_TOKEN.
-- Messages sent to the Telegram bot will create or reuse a channel in the INBOX category and be posted there.
-- Replies by the Discord admin (DISCORD_ADMIN_ID) inside the user's channel will be forwarded back to Telegram.
+## Development with Lando
+The project can also be run with Lando. It starts a Python `bot` service (code mounted from the host) and a `whatsapp` service built from the existing `node_whatsapp/Dockerfile` (the WhatsApp code is baked into the image, so run `lando rebuild` after editing it).
 
-WhatsApp (node bridge)
-- The scaffold includes a placeholder for a whatsapp-web.js bridge in `./node_whatsapp`. Provide your own implementation if you want QR-based WhatsApp support.
-- Typical flow: run the node_whatsapp service, scan the QR code once to establish a session, persist the session file so the QR is not needed again.
-- Be aware that using non-official automation can lead to account bans; use dedicated accounts.
+1. Copy `.env.example` to `.env` and fill it in.
+2. Start the environment:
+   ```bash
+   lando start
+   ```
+3. The webhook server is exposed at `https://multibridge-bot.lndo.site` (Lando proxy forwards to the bot's internal port `8000`).
+4. Useful commands:
+   ```bash
+   lando check      # Python syntax check inside the bot container
+   lando python     # run Python inside the bot container
+   lando pip        # run pip inside the bot container
+   lando rebuild    # rebuild services after changing WhatsApp code or Dockerfile
+   ```
 
-Notes on fixes applied
-- Converted DB layer to use aiosqlite (async) to avoid concurrency issues.
-- Fixed the discord bot lifecycle handling (wait_until_closed) and improved error handling around channel/category creation.
-- Dockerfile updated to install pinned dependencies from requirements.txt and a basic HEALTHCHECK was added.
+For plain Docker Compose usage, the project still provides a `docker-compose.yml` and a `docker-compose.override.yml` that loads `.env` into the containers.
 
-Security:
-- Do NOT commit real credentials. Use `.env` and secrets management for production.
+## Tests / checks
+Run syntax checks directly on the host (no Lando needed):
+
+```bash
+python3 -m py_compile main.py discord_bot.py database.py webhook_server.py platforms/*.py tests/*.py
+node --check node_whatsapp/index.js
+```
+
+Run the small pytest suite:
+
+```bash
+pytest tests -q
+```
+
+## Debug mode
+Set `DEBUG=true` in `.env` to enable verbose logging. In debug mode, the bot prints:
+
+- startup configuration and enabled platforms
+- every incoming webhook and its platform
+- Discord admin replies being forwarded back to platforms
+- channel resolution and creation
+- full tracebacks for errors
+
+## WhatsApp low-power mode
+The WhatsApp bridge now runs Chromium with energy-saving flags (GPU disabled, no audio, no extensions, background networking disabled, etc.) and caps the Node.js heap. You can slow it down further with `WA_MESSAGE_PROCESS_DELAY_MS` or skip media downloads with `WA_SKIP_MEDIA`. See `.env.example` and `node_whatsapp/README.md` for details.
+
+## Security
+Do NOT commit real credentials. Use `.env` and a proper secrets manager for production.
 

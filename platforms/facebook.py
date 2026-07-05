@@ -1,17 +1,22 @@
 """platforms/facebook.py
-Stub pour Facebook Messenger.
+Facebook Messenger connector using the Meta Messaging Graph API.
 """
+import logging
 
-def start(discord_bridge):
-    raise NotImplementedError("Facebook Messenger bridge not implemented")
-# platforms/facebook.py
-"""
-Facebook Messenger stub — best-effort. Implement with facebook-chat-api, fbchat or graph API if available.
-"""
-class FacebookPlatform:
+from platforms.meta_common import MetaPlatform
+
+logger = logging.getLogger(__name__)
+
+
+class FacebookPlatform(MetaPlatform):
+    """Facebook Messenger connector using the Meta Messaging Graph API.
+
+    Requires a Facebook Page ID and a META_PAGE_ACCESS_TOKEN with the
+    necessary messaging permissions.
+    """
+
     def __init__(self, discord, db):
-        self.discord = discord
-        self.db = db
+        super().__init__(discord, db, platform_tag="FB", page_id_env="FACEBOOK_PAGE_ID")
 
-    async def send(self, platform_user_id: str, text: str):
-        print(f"[FACEBOOK] send to {platform_user_id}: {text}")
+    async def start(self):
+        logger.info("Facebook Messenger platform initialized (page_id=%s)", self.page_id or "not set")

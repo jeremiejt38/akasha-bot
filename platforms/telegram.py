@@ -143,6 +143,7 @@ class TelegramPlatform:
                 pass
 
     async def send(self, platform_user_id: str, text: str, attachments=None):
+        logger.debug("Sending Telegram message to %s (text=%r, attachments=%s)", platform_user_id, text[:200], len(attachments) if attachments else 0)
         # send a message back to the user via Telegram
         if not self.app:
             logger.warning("Telegram application not started; cannot send message")

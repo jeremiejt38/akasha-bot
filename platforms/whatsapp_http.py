@@ -13,6 +13,7 @@ class WhatsAppHTTPPlatform:
         self.api_token = os.getenv("BRIDGE_API_TOKEN", "")
 
     async def send(self, platform_user_id: str, text: str, attachments=None):
+        logger.debug("Sending WhatsApp message to %s (text=%r, attachments=%s)", platform_user_id, text[:200], len(attachments) if attachments else 0)
         payload = {
             "platform_user_id": platform_user_id,
             "text": text or "",

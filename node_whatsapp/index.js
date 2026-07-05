@@ -12,17 +12,83 @@ const SESSION_PATH = process.env.WA_SESSION_PATH || '/app/session';
 const MEDIA_TMP_DIR = process.env.WA_MEDIA_TMP_DIR || '/tmp';
 const MAX_MEDIA_BYTES = parseInt(process.env.WA_MAX_MEDIA_BYTES || '20971520', 10); // 20 MB default
 
+// Low-power / energy saving settings
+const LOW_POWER_MODE = process.env.WA_LOW_POWER !== 'false' && process.env.WA_LOW_POWER !== '0';
+const WA_SKIP_MEDIA = process.env.WA_SKIP_MEDIA === 'true';
+const MESSAGE_PROCESS_DELAY_MS = parseInt(process.env.WA_MESSAGE_PROCESS_DELAY_MS || '0', 10);
+const JS_HEAP_MB = parseInt(process.env.WA_JS_HEAP_MB || '512', 10);
+
+try {
+  require('v8').setFlagsFromString(`--max-old-space-size=${JS_HEAP_MB}`);
+} catch (e) {
+  console.error('[WA] Failed to set JS heap limit:', e.message);
+}
+
+const DEFAULT_PUPPETEER_ARGS = [
+  '--no-sandbox',
+  '--disable-setuid-sandbox',
+  '--disable-gpu',
+  '--disable-software-rasterizer',
+  '--disable-dev-shm-usage',
+  '--disable-background-networking',
+  '--disable-default-apps',
+  '--disable-extensions',
+  '--disable-sync',
+  '--disable-translate',
+  '--mute-audio',
+  '--no-first-run',
+  '--disable-features=IsolateOrigins,site-per-process,TranslateUI',
+  '--window-size=1280,720'
+];
+
+const PUPPETEER_ARGS = process.env.WA_PUPPETEER_ARGS
+  ? process.env.WA_PUPPETEER_ARGS.split(',').map((s) => s.trim())
+  : DEFAULT_PUPPETEER_ARGS;
+
+if (LOW_POWER_MODE) {
+  PUPPETEER_ARGS.push('--disable-smooth-scrolling');
+  console.log('[WA] Low-power mode enabled (slower refresh/transfer, lower CPU usage)');
+}
+
 fs.mkdirSync(SESSION_PATH, { recursive: true });
 fs.mkdirSync(MEDIA_TMP_DIR, { recursive: true });
 
 const app = express();
 app.use(express.json({ limit: '25mb' }));
 
+let latestQr = null;
+let latestQrText = null;
+
+function updateQr(qr) {
+  latestQr = qr;
+  qrcode.generate(qr, { small: true }, (text) => {
+    latestQrText = text;
+  });
+}
+
+async function restartClient() {
+  try {
+    await client.logout();
+  } catch (e) {
+    console.log('[WA] Logout skipped (not authenticated):', e.message);
+  }
+  try {
+    await client.destroy();
+  } catch (e) {
+    console.log('[WA] Destroy skipped:', e.message);
+  }
+  latestQr = null;
+  latestQrText = null;
+  await client.initialize();
+}
+
+
 const client = new Client({
   authStrategy: new LocalAuth({ dataPath: SESSION_PATH }),
   puppeteer: {
     headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox']
+    args: PUPPETEER_ARGS,
+    defaultViewport: { width: 1280, height: 720 }
   }
 });
 
@@ -51,15 +117,20 @@ async function postInboundToBridge(payload) {
 
 client.on('qr', (qr) => {
   console.log('[WA] Scan this QR code with WhatsApp to authenticate:');
+  updateQr(qr);
   qrcode.generate(qr, { small: true });
 });
 
 client.on('ready', () => {
   console.log('[WA] WhatsApp client is ready');
+  latestQr = null;
+  latestQrText = null;
 });
 
 client.on('authenticated', () => {
   console.log('[WA] Authenticated successfully');
+  latestQr = null;
+  latestQrText = null;
 });
 
 client.on('auth_failure', (msg) => {
@@ -68,10 +139,15 @@ client.on('auth_failure', (msg) => {
 
 client.on('disconnected', (reason) => {
   console.warn('[WA] Client disconnected:', reason);
+  latestQr = null;
+  latestQrText = null;
 });
 
 client.on('message', async (message) => {
   try {
+    if (MESSAGE_PROCESS_DELAY_MS > 0) {
+      await new Promise((resolve) => setTimeout(resolve, MESSAGE_PROCESS_DELAY_MS));
+    }
     const chat = await message.getChat();
     const contact = await message.getContact();
     const displayName = contact.pushname || contact.name || contact.number || 'unknown';
@@ -84,7 +160,7 @@ client.on('message', async (message) => {
       attachments: []
     };
 
-    if (message.hasMedia) {
+    if (message.hasMedia && !WA_SKIP_MEDIA) {
       try {
         const media = await message.downloadMedia();
         if (media && media.data) {
@@ -119,6 +195,26 @@ client.on('message', async (message) => {
 
 app.get('/health', (req, res) => {
   res.json({ ok: true });
+});
+
+app.get('/qr', (req, res) => {
+  if (latestQrText) {
+    res.json({ qr: latestQr, qr_text: latestQrText });
+  } else {
+    res.status(404).json({ error: 'No QR code available' });
+  }
+});
+
+app.post('/restart', async (req, res) => {
+  try {
+    restartClient().catch((err) => {
+      console.error('[WA] Restart failed:', err.message);
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[WA] Failed to restart client:', err.message);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.post('/send', async (req, res) => {

@@ -1,45 +1,27 @@
-version: '3.8'
 services:
   bot:
     build: .
-    container_name: multibridhe-bot
-    restart: unless-stopped
-    env_file:
-      - .env
+    container_name: multibridge-bot
     volumes:
       - ./data:/app/data
+    restart: unless-stopped
     networks:
       - multibridge-net
 
-  # Example service for whatsapp-web.js (optional)
+  # WhatsApp bridge (Node + whatsapp-web.js)
   whatsapp:
-    image: keybased/whatsapp-web.js:latest
-    restart: unless-stopped
+    build: ./node_whatsapp
+    container_name: bridge-whatsapp
     volumes:
-      - ./whatsapp_data:/usr/src/app/session
-    environment:
-      - TZ=UTC
+      - ./node_whatsapp/session:/app/session
+      - ./data/tmp:/tmp
     networks:
       - multibridge-net
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
 
 networks:
   multibridge-net:
-# docker-compose.yml
-version: '3.8'
-
-services:
-  bot:
-    build: .
-    container_name: bridge-bot
-    env_file: .env
-    volumes:
-      - ./data:/app/data
-    restart: unless-stopped
-
-  # Optional: whatsapp-web.js bridge (Node) — provide your own implementation in ./node_whatsapp
-  whatsapp:
-    build: ./node_whatsapp
-    env_file: .env
-    # This is optional: remove or implement the node_whatsapp service if you want WhatsApp support
-    deploy:
-      replicas: 0
