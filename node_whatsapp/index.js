@@ -37,6 +37,8 @@ const DEFAULT_PUPPETEER_ARGS = [
   '--disable-translate',
   '--mute-audio',
   '--no-first-run',
+  '--single-process',
+  '--no-zygote',
   '--disable-features=IsolateOrigins,site-per-process,TranslateUI',
   '--window-size=1280,720'
 ];
@@ -88,7 +90,9 @@ const client = new Client({
   puppeteer: {
     headless: true,
     args: PUPPETEER_ARGS,
-    defaultViewport: { width: 1280, height: 720 }
+    defaultViewport: { width: 1280, height: 720 },
+    timeout: 120000,
+    protocolTimeout: 120000
   }
 });
 

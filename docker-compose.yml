@@ -24,6 +24,8 @@ services:
   whatsapp:
     build: ./node_whatsapp
     container_name: bridge-whatsapp
+    environment:
+      - WA_JS_HEAP_MB=1024
     volumes:
       - ./node_whatsapp/session:/app/session
       - ./data/tmp:/tmp
@@ -33,7 +35,7 @@ services:
       resources:
         limits:
           cpus: '1.0'
-          memory: 512M
+          memory: 1536M
 
 networks:
   plex-backend:
