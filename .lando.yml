@@ -34,7 +34,7 @@ services:
       node_modules:
 proxy:
   bot:
-    - multibridge-bot.lndo.site:8000
+    - bot.akasha.ing:8000
 tooling:
   python:
     service: bot

@@ -7,6 +7,13 @@ services:
     restart: unless-stopped
     networks:
       - multibridge-net
+      - traefik
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.bot.rule=Host(`bot.akasha.ing`)
+      - traefik.http.routers.bot.entrypoints=http,https
+      - traefik.http.routers.bot.tls.certresolver=letsencrypt
+      - traefik.http.services.bot.loadbalancer.server.port=8000
 
   # WhatsApp bridge (Node + whatsapp-web.js)
   whatsapp:
@@ -25,3 +32,5 @@ services:
 
 networks:
   multibridge-net:
+  traefik:
+    external: true

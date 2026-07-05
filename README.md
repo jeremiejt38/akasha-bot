@@ -32,7 +32,7 @@ The project can also be run with Lando. It starts a Python `bot` service (code m
    ```bash
    lando start
    ```
-3. The webhook server is exposed at `https://multibridge-bot.lndo.site` (Lando proxy forwards to the bot's internal port `8000`).
+3. The webhook server is exposed at `https://bot.akasha.ing` (Lando proxy forwards to the bot's internal port `8000`).
 4. Useful commands:
    ```bash
    lando check      # Python syntax check inside the bot container
@@ -42,6 +42,25 @@ The project can also be run with Lando. It starts a Python `bot` service (code m
    ```
 
 For plain Docker Compose usage, the project still provides a `docker-compose.yml` and a `docker-compose.override.yml` that loads `.env` into the containers.
+
+## Production deployment with Traefik
+
+For deployment behind an existing Traefik reverse proxy (e.g. on the Akasha server):
+
+1. Ensure a Docker network named `traefik` exists:
+   ```bash
+   docker network create traefik
+   ```
+2. Copy `.env.example` to `.env` and fill it in. Keep the Docker service defaults:
+   - `WHATSAPP_SERVICE_URL=http://whatsapp:3001`
+   - `BRIDGE_WEBHOOK_URL=http://bot:8000/webhooks/whatsapp`
+3. Adjust the Traefik labels in `docker-compose.yml` if your cert resolver is not named `letsencrypt`.
+4. Start the stack:
+   ```bash
+   docker compose up -d --build
+   ```
+
+The bot will be available at `https://bot.akasha.ing` and Meta webhooks should point to `https://bot.akasha.ing/webhooks/meta`.
 
 ## Tests / checks
 Run syntax checks directly on the host (no Lando needed):
@@ -77,7 +96,7 @@ Configure the Meta webhook endpoint once for both platforms.
 2. Generate a **Page Access Token** (`META_PAGE_ACCESS_TOKEN`) for the linked Facebook Page.
 3. Set `META_VERIFY_TOKEN` to a secret value used by Meta to verify the webhook URL.
 4. Configure the webhook in the Meta Developer portal:
-   - Callback URL: `https://<your-bot>/webhooks/meta`
+   - Callback URL: `https://bot.akasha.ing/webhooks/meta`
    - Verify token: the value of `META_VERIFY_TOKEN`
    - Subscribe to `messages` and `messaging_postbacks` events.
 5. For Instagram, set `INSTAGRAM_BUSINESS_ACCOUNT_ID` to the Instagram Business Account ID linked to the page.
