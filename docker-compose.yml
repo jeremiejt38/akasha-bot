@@ -12,7 +12,7 @@ services:
       - traefik.enable=true
       - traefik.http.routers.bot.rule=Host(`bot.akasha.ing`)
       - traefik.http.routers.bot.entrypoints=http,https
-      - traefik.http.routers.bot.tls.certresolver=letsencrypt
+      - traefik.http.routers.bot.service=bot
       - traefik.http.services.bot.loadbalancer.server.port=8000
 
   # WhatsApp bridge (Node + whatsapp-web.js)
