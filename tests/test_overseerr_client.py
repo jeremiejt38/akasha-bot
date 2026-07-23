@@ -1,6 +1,7 @@
 import sys
 import os
 import json
+from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
@@ -67,6 +68,27 @@ def test_find_user_by_singular_discord_id():
     import asyncio
     result = asyncio.run(client.find_user_by_discord_id("123456"))
     assert result == {"id": 42}
+
+
+def test_user_request_quota_filters_requested_by():
+    client = OverseerrClient(base_url="https://seerr.test", api_key="key")
+    now = datetime.now(timezone.utc).isoformat()
+    client._session = FakeSession([{
+        "status": 200,
+        "json": {
+            "results": [
+                {"requestedBy": {"id": 42}, "createdAt": now, "type": "movie"},
+                {"requestedBy": {"id": 42}, "createdAt": now, "type": "tv", "seasons": [{}, {}]},
+                {"requestedBy": {"id": 7}, "createdAt": now, "type": "movie"},
+            ],
+            "pageInfo": {"pages": 1},
+        },
+    }])
+
+    import asyncio
+    quota = asyncio.run(client.get_user_request_quota(42))
+
+    assert quota == {"seerr_remaining_movies": 6, "seerr_remaining_seasons": 1}
 
 
 def test_request_media():

@@ -125,22 +125,29 @@ class OverseerrClient:
         return await self._request("GET", f"/tv/{media_id}/season/{season_number}")
 
     async def get_user_request_quota(self, user_id: int, movie_limit: int = 7, season_limit: int = 3):
-        data = await self._request("GET", "/request", params={"take": 1000, "skip": 0, "userId": user_id})
         cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
         movies = seasons = 0
-        for request in data.get("results", []):
-            created_at = request.get("createdAt")
-            try:
-                created = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
-            except (AttributeError, TypeError, ValueError):
-                continue
-            if created < cutoff:
-                continue
-            media_type = (request.get("type") or request.get("media", {}).get("mediaType") or "").lower()
-            if media_type == "movie":
-                movies += 1
-            elif media_type == "tv":
-                seasons += len(request.get("seasons") or [None])
+        page = 1
+        while True:
+            data = await self._request("GET", "/request", params={"take": 100, "skip": (page - 1) * 100})
+            for request in data.get("results", []):
+                if str((request.get("requestedBy") or {}).get("id")) != str(user_id):
+                    continue
+                created_at = request.get("createdAt")
+                try:
+                    created = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+                except (AttributeError, TypeError, ValueError):
+                    continue
+                if created < cutoff:
+                    continue
+                media_type = (request.get("type") or request.get("media", {}).get("mediaType") or "").lower()
+                if media_type == "movie":
+                    movies += 1
+                elif media_type == "tv":
+                    seasons += len(request.get("seasons") or [None])
+            if page >= (data.get("pageInfo") or {}).get("pages", 1):
+                break
+            page += 1
         return {
             "seerr_remaining_movies": max(0, movie_limit - movies),
             "seerr_remaining_seasons": max(0, season_limit - seasons),
