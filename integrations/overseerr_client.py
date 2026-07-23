@@ -95,6 +95,19 @@ class OverseerrClient:
             page += 1
         return None
 
+    async def get_issues(self, page: int = 1, limit: int = 20):
+        return await self._request(
+            "GET",
+            "/issue",
+            params={"take": limit, "skip": max(0, page - 1) * limit},
+        )
+
+    async def comment_issue(self, issue_id: int | str, message: str):
+        return await self._request("POST", f"/issue/{issue_id}/comment", json={"message": message})
+
+    async def update_issue_status(self, issue_id: int | str, status: str):
+        return await self._request("POST", f"/issue/{issue_id}/{status}")
+
     async def search_media(self, query: str, page: int = 1, limit: int = 10):
         data = await self._request("GET", "/search", params={"query": query})
         if limit and isinstance(data.get("results"), list):
