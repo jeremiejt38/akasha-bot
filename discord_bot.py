@@ -1226,6 +1226,31 @@ class DiscordBridge:
         except Exception:
             logger.exception("Auto-sync run failed")
 
+    async def post_media_notification(self, channel_id: str | None, source: str, title: str, media_type: str | None, summary: str | None, year: int | None, thumb: str | None):
+        if not channel_id:
+            logger.debug("No channel ID configured for %s media notifications", source)
+            return
+        try:
+            channel = self.bot.get_channel(int(channel_id))
+            if channel is None:
+                logger.warning("Media notification channel %s not found", channel_id)
+                return
+            embed = discord.Embed(
+                title=f"Nouveau média sur {source}",
+                description=f"**{title}**" + (f" ({year})" if year else ""),
+                color=discord.Color.green(),
+            )
+            if media_type:
+                embed.add_field(name="Type", value=media_type.capitalize(), inline=True)
+            if summary:
+                embed.add_field(name="Résumé", value=summary[:1024], inline=False)
+            if thumb:
+                embed.set_thumbnail(url=thumb)
+            await channel.send(embed=embed)
+            logger.info("Sent %s media notification for %s", source, title)
+        except Exception:
+            logger.exception("Failed to post %s media notification", source)
+
     async def _notify_admin_auto_sync(self, result: dict):
         try:
             admin = await self.bot.fetch_user(self.admin_id)

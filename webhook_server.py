@@ -20,6 +20,8 @@ class WebhookServer:
         self.port = int(os.getenv("WEBHOOK_PORT", "8000"))
         self.api_token = os.getenv("BRIDGE_API_TOKEN", "")
         self.meta_verify_token = os.getenv("META_VERIFY_TOKEN", "")
+        self.plex_channel_id = os.getenv("PLEX_WEBHOOK_CHANNEL_ID")
+        self.jellyfin_channel_id = os.getenv("JELLYFIN_WEBHOOK_CHANNEL_ID")
         self._main_loop = None
         self._server_thread = None
 
@@ -121,6 +123,58 @@ class WebhookServer:
     async def tiktok_webhook(self, request: web.Request):
         return await self._generic_webhook(request, self.tiktok, "TikTok")
 
+    async def plex_webhook(self, request: web.Request):
+        logger.debug("Plex webhook received from %s", request.remote)
+        if not self._check_auth(request):
+            return web.json_response({"error": "unauthorized"}, status=401)
+        try:
+            payload = await request.json()
+            event = payload.get("event")
+            metadata = payload.get("Metadata", {})
+            if event in ("library.new", "media.scrobble"):
+                await self._run_in_main(
+                    self.discord.post_media_notification(
+                        channel_id=self.plex_channel_id,
+                        source="Plex",
+                        title=metadata.get("title"),
+                        media_type=metadata.get("type"),
+                        summary=metadata.get("summary"),
+                        year=metadata.get("year"),
+                        thumb=metadata.get("thumb"),
+                    )
+                )
+            return web.json_response({"ok": True})
+        except Exception:
+            logger.exception("Failed handling Plex webhook")
+            return web.json_response({"error": "internal_error"}, status=500)
+
+    async def jellyfin_webhook(self, request: web.Request):
+        logger.debug("Jellyfin webhook received from %s", request.remote)
+        if not self._check_auth(request):
+            return web.json_response({"error": "unauthorized"}, status=401)
+        try:
+            payload = await request.json()
+            event_type = payload.get("Event") or payload.get("NotificationType")
+            if event_type in ("ItemAdded", "PlaybackStart"):
+                item = payload.get("Item", {})
+                series = payload.get("Series", {})
+                name = item.get("Name") or series.get("Name") or "Nouveau média"
+                await self._run_in_main(
+                    self.discord.post_media_notification(
+                        channel_id=self.jellyfin_channel_id,
+                        source="Jellyfin",
+                        title=name,
+                        media_type=item.get("Type"),
+                        summary=item.get("Overview"),
+                        year=item.get("ProductionYear"),
+                        thumb=None,
+                    )
+                )
+            return web.json_response({"ok": True})
+        except Exception:
+            logger.exception("Failed handling Jellyfin webhook")
+            return web.json_response({"error": "internal_error"}, status=500)
+
     async def health(self, request: web.Request):
         return web.json_response({"ok": True})
 
@@ -131,6 +185,8 @@ class WebhookServer:
         app.router.add_post("/webhooks/meta", self.meta_webhook)
         app.router.add_post("/webhooks/snapchat", self.snapchat_webhook)
         app.router.add_post("/webhooks/tiktok", self.tiktok_webhook)
+        app.router.add_post("/webhooks/plex", self.plex_webhook)
+        app.router.add_post("/webhooks/jellyfin", self.jellyfin_webhook)
         app.router.add_get("/health", self.health)
         web.run_app(app, host=self.host, port=self.port, handle_signals=False, print=None, access_log=None)
 
