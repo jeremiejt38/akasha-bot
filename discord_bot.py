@@ -117,7 +117,7 @@ def _truncate_text_for_discord(text: str, author: str, limit: int = MAX_MESSAGE_
 
 
 class DiscordBridge:
-    def __init__(self, db, guild_id: int, admin_id: int, overseerr_client=None, wizarr_client=None, tracearr_client=None):
+    def __init__(self, db, guild_id: int, admin_id: int, overseerr_client=None, wizarr_client=None, tracearr_client=None, tautulli_client=None):
         intents = discord.Intents.default()
         intents.message_content = True
         intents.guilds = True
@@ -131,6 +131,7 @@ class DiscordBridge:
         self.overseerr_client = overseerr_client
         self.wizarr_client = wizarr_client
         self.tracearr_client = tracearr_client
+        self.tautulli_client = tautulli_client
         enable_auto_responder = os.getenv("AUTO_RESPONDER_ENABLED", "true").lower() in ("1", "true", "yes")
         self.auto_responder = AutoResponder() if enable_auto_responder else None
         self.health_checker = HealthChecker()
@@ -141,7 +142,7 @@ class DiscordBridge:
         self.invitation_manager = InvitationManager(wizarr_client, db)
         self.services_monitor = ServicesMonitor()
         self.problem_reports = ProblemReportFlow(self, db, overseerr_client)
-        self.account_dashboard = AccountDashboard(self, db, overseerr_client)
+        self.account_dashboard = AccountDashboard(self, db, overseerr_client, tautulli_client)
         self._ready_event = asyncio.Event()
         self._closed = False
         self._bot_task = None
