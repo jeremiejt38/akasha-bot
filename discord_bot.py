@@ -1539,7 +1539,7 @@ class DiscordBridge:
                     category_terms = {
                         "nb_films": ("film", "movie"),
                         "nb_series": ("série", "serie", "tv show"),
-                        "nb_animes": ("anime",),
+                        "nb_animes": ("animes", "anime"),
                         "nb_cartoons": ("cartoon",),
                         "nb_dessins_animes": ("dessin", "animation"),
                         "nb_documentaires": ("documentaire",),

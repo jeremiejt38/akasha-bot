@@ -1,6 +1,6 @@
 # Multiplaform Bridge Inbox - Discord unified inbox bot
 
-![Version](https://img.shields.io/badge/version-0.42.7-blue)
+![Version](https://img.shields.io/badge/version-0.42.8-blue)
 
 Bot Discord Python servant de bridge de messagerie unifiée.
 
@@ -292,6 +292,7 @@ Do NOT commit real credentials. Use `.env` and a proper secrets manager for prod
 - **feat: contexte conversationnel et transfert admin naturel**
 - **fix: fiabiliser les données dynamiques de la FAQ**
 - **fix: prioriser les bibliothèques FAQ exactes**
+- **fix: corriger le mapping animé de la FAQ**
 
 ### v0.41.x
 
