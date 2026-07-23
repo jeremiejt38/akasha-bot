@@ -297,6 +297,13 @@ class DiscordBridge:
         )(sync_cmd)
         self.bot.tree.add_command(sync_cmd, guild=discord.Object(id=self.guild_id))
 
+        renew_cmd = app_commands.Command(
+            name="renew",
+            description="Demander le renouvellement de ton abonnement Akasha",
+            callback=self._renew_command
+        )
+        self.bot.tree.add_command(renew_cmd, guild=discord.Object(id=self.guild_id))
+
     async def _handle_inbound_dm(self, message: discord.Message):
         try:
             user_id = str(message.author.id)
@@ -647,6 +654,10 @@ class DiscordBridge:
         if user.get("tracearr_trust_score") is not None:
             embed.add_field(name="Trust score", value=str(user["tracearr_trust_score"]), inline=True)
 
+        renewal_status = user.get("renewal_status")
+        if renewal_status == "pending":
+            embed.add_field(name="Renouvellement", value="Demande en attente", inline=True)
+
         links = []
         if os.getenv("PLEX_URL"):
             links.append(f"[Plex]({os.getenv('PLEX_URL')})")
@@ -761,6 +772,46 @@ class DiscordBridge:
         await interaction.response.send_message(
             f"✅ Note enregistrée pour <@{membre.id}>.", ephemeral=True
         )
+
+    async def _renew_command(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        discord_id = str(interaction.user.id)
+        user = await self.db.get_user_by_discord_id(discord_id)
+
+        if not user or not user.get("overseerr_id"):
+            await interaction.followup.send(
+                f"Ton compte n'est pas lié. Utilise `/link <email>` pour le lier.", ephemeral=True
+            )
+            return
+
+        try:
+            now = datetime.datetime.utcnow().isoformat()
+            await self.db.update_user(
+                discord_id,
+                renewal_requested_at=now,
+                renewal_status="pending",
+                updated_at=now,
+            )
+
+            # Notify admin
+            try:
+                admin = await self.bot.fetch_user(self.admin_id)
+                if admin:
+                    await admin.send(
+                        f"Demande de renouvellement de <@{discord_id}> ({user.get('email') or 'email inconnu'}).\n"
+                        f"Utilise `/dashboard` pour voir les détails."
+                    )
+            except Exception:
+                logger.exception("Failed to notify admin about renewal request from %s", discord_id)
+
+            await interaction.followup.send(
+                f"✅ Demande de renouvellement envoyée. L'équipe {BOT_NAME} te contactera bientôt.", ephemeral=True
+            )
+        except Exception:
+            logger.exception("Renew command failed for user %s", discord_id)
+            await interaction.followup.send(
+                f"❌ Impossible d'enregistrer la demande. Contacte l'équipe {BOT_NAME}.", ephemeral=True
+            )
 
     async def _sync_command(self, interaction: discord.Interaction, membre: discord.Member | None = None):
         if interaction.user.id != self.admin_id:
