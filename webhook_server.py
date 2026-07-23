@@ -22,6 +22,7 @@ class WebhookServer:
         self.meta_verify_token = os.getenv("META_VERIFY_TOKEN", "")
         self.plex_channel_id = os.getenv("PLEX_WEBHOOK_CHANNEL_ID")
         self.jellyfin_channel_id = os.getenv("JELLYFIN_WEBHOOK_CHANNEL_ID")
+        self.overseerr_channel_id = os.getenv("OVERSEERR_WEBHOOK_CHANNEL_ID")
         self._main_loop = None
         self._server_thread = None
 
@@ -175,6 +176,18 @@ class WebhookServer:
             logger.exception("Failed handling Jellyfin webhook")
             return web.json_response({"error": "internal_error"}, status=500)
 
+    async def overseerr_webhook(self, request: web.Request):
+        logger.debug("Overseerr webhook received from %s", request.remote)
+        if not self._check_auth(request):
+            return web.json_response({"error": "unauthorized"}, status=401)
+        try:
+            payload = await request.json()
+            await self._run_in_main(self.discord.handle_overseerr_webhook(payload))
+            return web.json_response({"ok": True})
+        except Exception:
+            logger.exception("Failed handling Overseerr webhook")
+            return web.json_response({"error": "internal_error"}, status=500)
+
     async def health(self, request: web.Request):
         return web.json_response({"ok": True})
 
@@ -187,6 +200,7 @@ class WebhookServer:
         app.router.add_post("/webhooks/tiktok", self.tiktok_webhook)
         app.router.add_post("/webhooks/plex", self.plex_webhook)
         app.router.add_post("/webhooks/jellyfin", self.jellyfin_webhook)
+        app.router.add_post("/webhooks/overseerr", self.overseerr_webhook)
         app.router.add_get("/health", self.health)
         web.run_app(app, host=self.host, port=self.port, handle_signals=False, print=None, access_log=None)
 

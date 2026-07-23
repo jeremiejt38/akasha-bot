@@ -208,6 +208,15 @@ Supported events:
 
 - **Plex**: `library.new`, `media.scrobble`
 - **Jellyfin**: `ItemAdded`, `PlaybackStart`
+- **Overseerr**: `MEDIA_REQUESTED`, `MEDIA_APPROVED`, `MEDIA_AVAILABLE`, `MEDIA_REJECTED`, etc.
+
+Configure the Overseerr notification channel:
+
+```env
+OVERSEERR_WEBHOOK_CHANNEL_ID=123456789012345678
+```
+
+Then point the Overseerr webhook to `https://bot.akasha.ing/webhooks/overseerr`. The bot will post an embed in the configured channel for every Overseerr notification, and DM the requesting user when a requested media becomes available (`MEDIA_AVAILABLE`).
 
 ## Automatic synchronization
 
