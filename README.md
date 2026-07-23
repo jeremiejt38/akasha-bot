@@ -130,6 +130,7 @@ Available slash commands for members:
   - **Demandes** — pending Overseerr requests
   - **Trust bas** — members with low trust score
   - **Stats** — overall statistics
+- **`/reload`** — Reloads the auto-responder configuration from `config/auto_responses.json` without restarting the bot (admin only).
 
 ## Discord community onboarding
 
