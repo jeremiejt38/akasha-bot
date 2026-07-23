@@ -108,8 +108,33 @@ class Database:
         await self._ensure_problem_report_column("source", "TEXT NOT NULL DEFAULT 'discord'")
         await self._ensure_problem_report_column("external_id", "TEXT")
         await self.conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_problem_reports_source_external ON problem_reports(source, external_id) WHERE external_id IS NOT NULL")
-        await self._ensure_user_column("access_type", "TEXT DEFAULT 'subscriber'")
-        await self._ensure_user_column("onboarding_answers", "TEXT")
+        user_columns = {
+            "email": "TEXT",
+            "discord_username": "TEXT",
+            "overseerr_id": "INTEGER",
+            "overseerr_username": "TEXT",
+            "overseerr_plex_username": "TEXT",
+            "overseerr_discord_ids": "TEXT",
+            "wizarr_invite_code": "TEXT",
+            "wizarr_invite_expires": "TEXT",
+            "created_at": "TEXT",
+            "months_subscribed": "INTEGER DEFAULT 0",
+            "admin_notes": "TEXT",
+            "renewal_requested_at": "TEXT",
+            "renewal_status": "TEXT",
+            "tracearr_user_id": "TEXT",
+            "tracearr_username": "TEXT",
+            "tracearr_trust_score": "REAL",
+            "tracearr_total_violations": "INTEGER",
+            "tracearr_session_count": "INTEGER",
+            "tracearr_last_activity": "TEXT",
+            "tracearr_stats": "TEXT",
+            "access_type": "TEXT DEFAULT 'subscriber'",
+            "onboarding_answers": "TEXT",
+            "updated_at": "TEXT",
+        }
+        for name, definition in user_columns.items():
+            await self._ensure_user_column(name, definition)
         await self.conn.execute("UPDATE users SET access_type = 'subscriber' WHERE access_type IS NULL")
         await self.conn.commit()
 
