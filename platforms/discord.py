@@ -50,3 +50,4 @@ class DiscordPlatform:
             logger.debug("Discord DM sent to user %s", platform_user_id)
         except Exception:
             logger.exception("Failed to send Discord DM to user %s", platform_user_id)
+            raise

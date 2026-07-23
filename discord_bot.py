@@ -250,8 +250,9 @@ class DiscordBridge:
                             logger.debug("Forwarding admin reply to %s (text=%r, attachments=%s)", platform, message.content[:200], len(attachments))
                             try:
                                 await handler.send(platform_user_id, message.content or "", attachments=attachments)
-                            except Exception as e:
-                                logger.exception(f"Failed to forward admin message to platform {platform}: {e}")
+                            except Exception:
+                                logger.exception("Failed to forward admin message to platform %s", platform)
+                                await message.channel.send("⚠️ Livraison impossible sur cette messagerie. La réponse n'a pas été remise à l'utilisateur.")
                     else:
                         logger.warning("No send handler for platform %s", platform)
                 else:

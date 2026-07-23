@@ -176,3 +176,4 @@ class TelegramPlatform:
                 await self.app.bot.send_message(chat_id=chat_id, text=text)
         except Exception:
             logger.exception(f"Failed to send Telegram message to {platform_user_id}")
+            raise

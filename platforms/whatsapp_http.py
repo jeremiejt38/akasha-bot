@@ -53,3 +53,4 @@ class WhatsAppHTTPPlatform:
                         raise RuntimeError(f"WhatsApp send failed: {resp.status} {body}")
         except Exception:
             logger.exception("Failed to send outbound WhatsApp message")
+            raise
