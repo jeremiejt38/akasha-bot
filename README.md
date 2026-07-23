@@ -1,6 +1,6 @@
 # Multiplaform Bridge Inbox - Discord unified inbox bot
 
-![Version](https://img.shields.io/badge/version-0.28.0-blue)
+![Version](https://img.shields.io/badge/version-0.29.0-blue)
 
 Bot Discord Python servant de bridge de messagerie unifiée.
 
@@ -261,7 +261,12 @@ Do NOT commit real credentials. Use `.env` and a proper secrets manager for prod
 
 ## Changelog
 
-### v0.28.x ← *actuel*
+### v0.29.x ← *actuel*
+
+- **feat**: endpoint webhook Overseerr (`/webhooks/overseerr`) pour les notifications de demandes et médias disponibles
+- **feat**: notification DM automatique à l'abonné quand son média demandé est disponible
+
+### v0.28.x
 
 - **feat**: commande abonné `/feedback <message>` pour envoyer un feedback anonyme à l'admin
 
