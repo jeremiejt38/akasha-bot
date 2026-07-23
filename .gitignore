@@ -29,3 +29,4 @@ node_whatsapp/session/
 node_whatsapp/.wwebjs_auth/
 node_whatsapp/node_modules/
 node_whatsapp/*.log
+.aider*
