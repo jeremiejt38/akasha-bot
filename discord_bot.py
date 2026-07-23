@@ -274,6 +274,17 @@ class DiscordBridge:
         )
         self.bot.tree.add_command(reload_cmd, guild=discord.Object(id=self.guild_id))
 
+        note_cmd = app_commands.Command(
+            name="note",
+            description="Ajoute une note privée sur un abonné (admin only)",
+            callback=self._note_command
+        )
+        note_cmd = app_commands.describe(
+            membre="L'abonné ciblé",
+            texte="La note à enregistrer"
+        )(note_cmd)
+        self.bot.tree.add_command(note_cmd, guild=discord.Object(id=self.guild_id))
+
     async def _handle_inbound_dm(self, message: discord.Message):
         try:
             user_id = str(message.author.id)
@@ -725,6 +736,19 @@ class DiscordBridge:
             await interaction.response.send_message(
                 "❌ Impossible de recharger l'auto-responder.", ephemeral=True
             )
+
+    async def _note_command(self, interaction: discord.Interaction, membre: discord.Member, texte: str):
+        if interaction.user.id != self.admin_id:
+            await interaction.response.send_message("Seul l'admin peut utiliser cette commande.", ephemeral=True)
+            return
+        await self.db.update_user(
+            str(membre.id),
+            admin_notes=texte,
+            updated_at=datetime.datetime.utcnow().isoformat(),
+        )
+        await interaction.response.send_message(
+            f"✅ Note enregistrée pour <@{membre.id}>.", ephemeral=True
+        )
 
     async def _get_user_data_for_inbound(self, platform_tag: str, platform_user_id: str):
         if platform_tag == "DC":

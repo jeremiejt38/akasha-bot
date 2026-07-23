@@ -99,12 +99,15 @@ class AdminDashboard:
             created = self._format_date(u.get("created_at"))
             months = u.get("months_subscribed") or 0
             trust = u.get("tracearr_trust_score") or "N/A"
+            notes = u.get("admin_notes")
+            notes_line = f"Note admin: {notes}\n" if notes else ""
             value = (
                 f"Email: {u.get('email') or 'N/A'}\n"
                 f"Inscription: {created}\n"
                 f"Expiration: {exp}\n"
                 f"Mois cumulés: {months}\n"
-                f"Trust score: {trust}"
+                f"Trust score: {trust}\n"
+                f"{notes_line}"
             )
             embed.add_field(name=name, value=value, inline=False)
 
