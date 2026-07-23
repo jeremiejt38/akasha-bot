@@ -335,7 +335,8 @@ class ProblemReportFlow:
             logger.warning("Cannot notify admin about report %s", report_id)
         await interaction.response.send_message(f"Signalement `#{report_id}` envoyé.",ephemeral=True)
     def embed(self,r):
-        e=discord.Embed(title=f"{'✅ Résolu' if r['status']=='resolved' else '🆕 Signalement'} #{r['id']}",description=r['description'],color=discord.Color.green() if r['status']=='resolved' else discord.Color.orange()); e.add_field(name="Utilisateur",value=f"<@{r['discord_id']}>",inline=True); e.add_field(name="Type",value=CATEGORIES[r['category']],inline=True); e.add_field(name="Source",value=(r.get("source") or "discord").title(),inline=True); e.add_field(name="Signalé",value=r['reported_at'],inline=False)
+        e=discord.Embed(title=f"{'✅ Résolu' if r['status']=='resolved' else '🆕 Signalement'} #{r['id']}",color=discord.Color.green() if r['status']=='resolved' else discord.Color.orange()); e.add_field(name="Utilisateur",value=f"<@{r['discord_id']}>",inline=True); e.add_field(name="Type",value=CATEGORIES[r['category']],inline=True); e.add_field(name="Source",value=(r.get("source") or "discord").title(),inline=True); e.add_field(name="Signalé",value=r['reported_at'],inline=False)
+        e.add_field(name="Description du problème",value=(r.get("description") or "Aucune description.")[:1024],inline=False)
         if r.get('subcategory'): e.add_field(name="Sous-type",value=r['subcategory'],inline=True)
         if r.get('media_title'): e.add_field(name="Média",value=r['media_title'],inline=False)
         if r.get('admin_response'): e.add_field(name="Réponse",value=r['admin_response'],inline=False)

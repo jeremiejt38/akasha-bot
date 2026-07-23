@@ -5,7 +5,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from database import Database
-from integrations.problem_reports import AdminView, MediaView
+from integrations.problem_reports import AdminView, MediaView, ProblemReportFlow
 
 
 def test_problem_report_persistence(tmp_path):
@@ -47,6 +47,22 @@ def test_media_view_paginates_options_above_discord_limit():
     second_page = MediaView(object(), {"media_type": "movie"}, results, page=1)
     assert len(second_page.children[0].options) == 1
     assert [item.label for item in second_page.children[1:]] == ["Précédent"]
+
+
+def test_report_embed_labels_original_description():
+    flow = object.__new__(ProblemReportFlow)
+    embed = flow.embed({
+        "id": 7,
+        "status": "open",
+        "discord_id": "1",
+        "category": "video",
+        "source": "discord",
+        "reported_at": "2026-01-01T00:00:00",
+        "description": "L'image reste noire.",
+    })
+    assert [(field.name, field.value) for field in embed.fields if field.name == "Description du problème"] == [
+        ("Description du problème", "L'image reste noire.")
+    ]
 
 
 def test_admin_view_uses_report_specific_custom_ids():
