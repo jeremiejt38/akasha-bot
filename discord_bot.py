@@ -25,6 +25,7 @@ from integrations.onboarding import OnboardingFlow
 from integrations.admin_dashboard import AdminDashboard
 from integrations.expiration_alerts import ExpirationAlerts
 from integrations.sync_service import SyncService
+from integrations.invitation_manager import InvitationManager
 
 INBOX_CATEGORY_NAME = os.getenv("INBOX_CATEGORY_NAME", "📥 INBOX")
 BOT_NAME = os.getenv("BOT_NAME", "Akasha")
@@ -121,6 +122,7 @@ class DiscordBridge:
         self.admin_dashboard = AdminDashboard(self, db, overseerr_client)
         self.expiration_alerts = ExpirationAlerts(self, db, guild_id, admin_id)
         self.sync_service = SyncService(self, overseerr_client, db)
+        self.invitation_manager = InvitationManager(wizarr_client)
         self._ready_event = asyncio.Event()
         self._closed = False
         self._bot_task = None
@@ -329,6 +331,16 @@ class DiscordBridge:
             callback=self._faq_command
         )
         self.bot.tree.add_command(faq_cmd, guild=discord.Object(id=self.guild_id))
+
+        invitations_cmd = app_commands.Command(
+            name="invitations",
+            description="Gère les invitations Wizarr (admin only)",
+            callback=self._invitations_command
+        )
+        invitations_cmd = app_commands.describe(
+            statut="Filtrer par statut: all, unused, used, expired"
+        )(invitations_cmd)
+        self.bot.tree.add_command(invitations_cmd, guild=discord.Object(id=self.guild_id))
 
     async def _handle_inbound_dm(self, message: discord.Message):
         try:
@@ -824,6 +836,47 @@ class DiscordBridge:
             embed.add_field(name=f"Q: {question}", value=f"R: {value}", inline=False)
 
         await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    async def _invitations_command(self, interaction: discord.Interaction, statut: str = "all"):
+        if interaction.user.id != self.admin_id:
+            await interaction.response.send_message("Seul l'admin peut utiliser cette commande.", ephemeral=True)
+            return
+        if not self.wizarr_client:
+            await interaction.response.send_message(
+                "La gestion des invitations n'est pas configurée.", ephemeral=True
+            )
+            return
+
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        try:
+            invitations = await self.invitation_manager.list_invitations(
+                status=statut if statut != "all" else None
+            )
+            if not invitations:
+                await interaction.followup.send(
+                    f"Aucune invitation trouvée avec le statut `{statut}`.", ephemeral=True
+                )
+                return
+
+            embed = discord.Embed(
+                title=f"Invitations Wizarr — {statut}",
+                description=f"{len(invitations)} invitation(s) trouvée(s). Clique sur un bouton pour révoquer.",
+                color=discord.Color.purple(),
+            )
+            for inv in invitations[:10]:
+                embed.add_field(
+                    name=f"`{inv.get('code')}` — {inv.get('status')}",
+                    value=self.invitation_manager.format_invitation(inv),
+                    inline=False,
+                )
+
+            view = InvitationsView(self.invitation_manager, invitations[:10])
+            await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+        except Exception:
+            logger.exception("Invitations command failed")
+            await interaction.followup.send(
+                f"❌ Impossible de récupérer les invitations. Contacte l'équipe {BOT_NAME}.", ephemeral=True
+            )
 
     async def _support_command(self, interaction: discord.Interaction, sujet: str, description: str):
         await interaction.response.defer(ephemeral=True, thinking=True)
