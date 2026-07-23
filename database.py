@@ -105,9 +105,35 @@ class Database:
             )
             """
         )
-        await self._ensure_problem_report_column("source", "TEXT NOT NULL DEFAULT 'discord'")
-        await self._ensure_problem_report_column("external_id", "TEXT")
-        await self.conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_problem_reports_source_external ON problem_reports(source, external_id) WHERE external_id IS NOT NULL")
+        await self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS schema_migrations (
+                version TEXT PRIMARY KEY,
+                applied_at TEXT NOT NULL
+            )
+            """
+        )
+        await self._run_migrations()
+        await self.conn.commit()
+
+    async def _run_migrations(self):
+        migrations = [
+            ("001_legacy_users", self._migrate_legacy_users),
+            ("002_problem_report_sources", self._migrate_problem_report_sources),
+        ]
+        async with self.conn.execute("SELECT version FROM schema_migrations") as cursor:
+            applied = {row[0] for row in await cursor.fetchall()}
+        for version, migration in migrations:
+            if version in applied:
+                continue
+            await migration()
+            await self.conn.execute(
+                "INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)",
+                (version, datetime.datetime.utcnow().isoformat()),
+            )
+            logger.info("Applied database migration %s", version)
+
+    async def _migrate_legacy_users(self):
         user_columns = {
             "email": "TEXT",
             "discord_username": "TEXT",
@@ -136,7 +162,11 @@ class Database:
         for name, definition in user_columns.items():
             await self._ensure_user_column(name, definition)
         await self.conn.execute("UPDATE users SET access_type = 'subscriber' WHERE access_type IS NULL")
-        await self.conn.commit()
+
+    async def _migrate_problem_report_sources(self):
+        await self._ensure_problem_report_column("source", "TEXT NOT NULL DEFAULT 'discord'")
+        await self._ensure_problem_report_column("external_id", "TEXT")
+        await self.conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_problem_reports_source_external ON problem_reports(source, external_id) WHERE external_id IS NOT NULL")
 
     async def _ensure_problem_report_column(self, name: str, definition: str):
         async with self.conn.execute("PRAGMA table_info(problem_reports)") as cursor:

@@ -1,6 +1,6 @@
 # Multiplaform Bridge Inbox - Discord unified inbox bot
 
-![Version](https://img.shields.io/badge/version-0.36.4-blue)
+![Version](https://img.shields.io/badge/version-0.36.5-blue)
 
 Bot Discord Python servant de bridge de messagerie unifiée.
 
@@ -293,6 +293,7 @@ Do NOT commit real credentials. Use `.env` and a proper secrets manager for prod
 - **fix: tableau administrateur non éphémère et import de l'historique Plex/Seerr, y compris fermé**
 - **fix: rapproche les issues Seerr par l'identifiant créateur lorsque les IDs Discord ne sont pas inclus**
 - **fix: migre les anciennes tables utilisateurs pour permettre la liaison Seerr/Discord**
+- **feat: migrations SQLite versionnées et idempotentes pour les mises à jour de schéma**
 
 ### v0.35.x
 

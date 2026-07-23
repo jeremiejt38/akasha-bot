@@ -1,11 +1,31 @@
 import asyncio
 import os
 import sys
+import sqlite3
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from database import Database
 from integrations.problem_reports import AdminView, MediaView, ProblemReportFlow
+
+
+def test_legacy_database_is_migrated_once(tmp_path):
+    path = tmp_path / "legacy.db"
+    conn = sqlite3.connect(path)
+    conn.execute("CREATE TABLE users (discord_id TEXT PRIMARY KEY)")
+    conn.commit()
+    conn.close()
+
+    async def run():
+        db = Database(str(path))
+        await db.connect()
+        columns = {row[1] for row in await (await db.conn.execute("PRAGMA table_info(users)")).fetchall()}
+        assert {"created_at", "overseerr_id", "overseerr_plex_username", "updated_at"}.issubset(columns)
+        migrations = [row[0] for row in await (await db.conn.execute("SELECT version FROM schema_migrations ORDER BY version")).fetchall()]
+        assert migrations == ["001_legacy_users", "002_problem_report_sources"]
+        await db.conn.close()
+
+    asyncio.run(run())
 
 
 def test_problem_report_persistence(tmp_path):
