@@ -15,6 +15,33 @@ class SyncService:
         self.db = db
         self.onboarding_config = OnboardingConfig()
 
+    async def sync_all(self, guild) -> dict:
+        """Sync all known users with Overseerr and return a summary."""
+        if not self.overseerr_client:
+            return {"ok": False, "error": "Overseerr not configured", "success": 0, "failed": 0}
+
+        users = await self.db.get_all_users()
+        success = 0
+        failed = 0
+        errors = []
+
+        for user in users:
+            member = guild.get_member(int(user["discord_id"]))
+            if member is None:
+                try:
+                    member = await guild.fetch_member(int(user["discord_id"]))
+                except Exception:
+                    failed += 1
+                    continue
+            result = await self.sync_user(member)
+            if result["ok"]:
+                success += 1
+            else:
+                failed += 1
+                errors.append(f"{user.get('discord_id')}: {result['error']}")
+
+        return {"ok": True, "success": success, "failed": failed, "errors": errors}
+
     async def sync_user(self, member) -> dict:
         """Sync a single Discord member with Overseerr and the local DB.
 
