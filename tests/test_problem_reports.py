@@ -5,7 +5,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from database import Database
-from integrations.problem_reports import AdminView
+from integrations.problem_reports import AdminView, MediaView
 
 
 def test_problem_report_persistence(tmp_path):
@@ -28,12 +28,25 @@ def test_problem_report_persistence(tmp_path):
         )
         report = await db.get_problem_report(report_id)
         assert report["status"] == "open"
+        assert report["source"] == "discord"
         assert (await db.get_open_problem_reports())[0]["id"] == report_id
         await db.update_problem_report(report_id, status="resolved", resolved_at="2026-01-02T00:00:00")
         assert await db.get_open_problem_reports() == []
         await db.conn.close()
 
     asyncio.run(run())
+
+
+def test_media_view_paginates_options_above_discord_limit():
+    results = [{"id": index, "title": f"Film {index}"} for index in range(26)]
+    view = MediaView(object(), {"media_type": "movie"}, results)
+    select = view.children[0]
+    assert len(select.options) == 25
+    assert [item.label for item in view.children[1:]] == ["Suivant"]
+
+    second_page = MediaView(object(), {"media_type": "movie"}, results, page=1)
+    assert len(second_page.children[0].options) == 1
+    assert [item.label for item in second_page.children[1:]] == ["Précédent"]
 
 
 def test_admin_view_uses_report_specific_custom_ids():
