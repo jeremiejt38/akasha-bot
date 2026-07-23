@@ -152,6 +152,7 @@ class DiscordBridge:
         self._closed = False
         self._bot_task = None
         self._faq_statistics_cache: tuple[datetime.datetime, dict] | None = None
+        self._auto_response_conversations: dict[tuple[str, str], dict] = {}
 
         @self.bot.event
         async def on_ready():
@@ -1605,10 +1606,37 @@ class DiscordBridge:
 
     async def _send_auto_response(self, platform_tag: str, platform_user_id: str, channel, text: str, user_data: dict) -> bool:
         try:
-            response = self.auto_responder.respond(text, await self._get_auto_response_template_data(user_data))
+            entry, score = self.auto_responder.match(text)
+            if entry is None or score < self.auto_responder.threshold:
+                return False
+
+            conversation_key = (platform_tag, str(platform_user_id))
+            now = datetime.datetime.now(datetime.timezone.utc)
+            state = self._auto_response_conversations.get(conversation_key)
+            confidence_threshold = int(os.getenv("AUTO_RESPONDER_CONFIDENCE_THRESHOLD", "90"))
+            if score < confidence_threshold:
+                clarification = "Je ne suis pas certain d'avoir compris. Tu peux préciser si cela concerne l'accès, ton abonnement, une demande de contenu ou un problème technique ?"
+                handler = self.platform_handlers.get(platform_tag)
+                if handler:
+                    await handler.send(platform_user_id, clarification)
+                await channel.send(f"**Auto-reply**: {clarification}")
+                self._auto_response_conversations[conversation_key] = {"entry": None, "response": clarification, "at": now}
+                await self.db.log_audit(action="auto_response_clarification", details=f"platform={platform_tag}, user={platform_user_id}, score={score}")
+                return True
+
+            if state and state.get("entry") is entry and now - state["at"] < datetime.timedelta(minutes=5):
+                duplicate = "Je t'ai déjà donné cette information récemment. Réponds `admin` si tu souhaites parler à quelqu'un."
+                handler = self.platform_handlers.get(platform_tag)
+                if handler:
+                    await handler.send(platform_user_id, duplicate)
+                await channel.send(f"**Auto-reply**: {duplicate}")
+                return True
+
+            template_data = await self._get_auto_response_template_data(user_data)
+            response = self.auto_responder.respond(text, template_data)
             logger.info(
-                "Auto-responder result for %s user=%s: response=%r",
-                platform_tag, platform_user_id, response,
+                "Auto-responder result for %s user=%s: score=%s entry=%s response=%r",
+                platform_tag, platform_user_id, score, entry.get("patterns", [None])[0], response,
             )
             if not response:
                 return False
@@ -1630,6 +1658,8 @@ class DiscordBridge:
             if handler:
                 await handler.send(platform_user_id, response)
             await channel.send(f"**Auto-reply**: {response}")
+            self._auto_response_conversations[conversation_key] = {"entry": entry, "response": response, "at": now}
+            await self.db.log_audit(action="auto_response_sent", details=f"platform={platform_tag}, user={platform_user_id}, score={score}, pattern={entry.get('patterns', [None])[0]}")
             return True
         except Exception:
             logger.exception("Auto-responder failed for %s user=%s", platform_tag, platform_user_id)

@@ -157,24 +157,30 @@ class AutoResponder:
                 items.append((question, answer))
         return items[:limit]
 
-    def respond(self, message: str, user_data: dict | None = None) -> str | None:
+    def match(self, message: str) -> tuple[dict | None, int]:
         text = _normalize(message)
         if not text:
-            return None
+            return None, 0
 
         best_entry = None
         best_score = 0
+        best_priority = 0
         for entry in self.knowledge:
+            priority = int(entry.get("priority", 0))
+            if entry.get("marker"):
+                priority = max(priority, 5)
             for pattern in entry.get("patterns", []):
-                score = fuzz.partial_ratio(text, _normalize(pattern))
-                if score > best_score:
+                normalized_pattern = _normalize(pattern)
+                score = fuzz.partial_ratio(text, normalized_pattern)
+                if (score, priority) > (best_score, best_priority):
                     best_score = score
+                    best_priority = priority
                     best_entry = entry
+        return best_entry, best_score
 
-        if best_score < self.threshold:
-            return None
-
-        if not best_entry:
+    def respond(self, message: str, user_data: dict | None = None) -> str | dict | None:
+        best_entry, best_score = self.match(message)
+        if best_score < self.threshold or not best_entry:
             return None
 
         required_access = best_entry.get("min_access")
