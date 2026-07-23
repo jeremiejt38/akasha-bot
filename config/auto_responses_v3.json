@@ -9,7 +9,7 @@
       "min_access": "everyone"
     },
     {
-      "patterns": ["parler à quelqu'un", "parler a quelqu'un", "parler à un humain", "parler a un humain", "contacter le support", "je veux un humain", "vrai personne", "pas un bot"],
+      "patterns": ["parler à quelqu'un", "parler a quelqu'un", "parler à un humain", "parler a un humain", "contacter le support", "je veux un humain", "vrai personne", "pas un bot", "admin", "parler admin", "contacte admin"],
       "marker": "notify_admin_human_contact",
       "answer": "⏳ Je préviens l'admin que tu souhaites lui parler directement. Merci de patienter.",
       "fallback": "Contacte l'admin depuis le serveur Discord.",

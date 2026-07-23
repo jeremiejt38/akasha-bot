@@ -1612,10 +1612,22 @@ class DiscordBridge:
 
             conversation_key = (platform_tag, str(platform_user_id))
             now = datetime.datetime.now(datetime.timezone.utc)
+            context_minutes = max(1, int(os.getenv("AUTO_RESPONDER_CONTEXT_MINUTES", "15")))
+            cutoff = now - datetime.timedelta(minutes=context_minutes)
+            self._auto_response_conversations = {
+                key: value for key, value in self._auto_response_conversations.items()
+                if value["at"] >= cutoff
+            }
             state = self._auto_response_conversations.get(conversation_key)
             confidence_threshold = int(os.getenv("AUTO_RESPONDER_CONFIDENCE_THRESHOLD", "90"))
             if score < confidence_threshold:
-                clarification = "Je ne suis pas certain d'avoir compris. Tu peux préciser si cela concerne l'accès, ton abonnement, une demande de contenu ou un problème technique ?"
+                previous_entry = (state or {}).get("entry") or {}
+                previous_topic = previous_entry.get("patterns", [None])[0]
+                clarification = (
+                    f"Tu parles toujours de « {previous_topic} » ? Sinon, précise si cela concerne l'accès, ton abonnement, une demande de contenu ou un problème technique."
+                    if previous_topic else
+                    "Je ne suis pas certain d'avoir compris. Tu peux préciser si cela concerne l'accès, ton abonnement, une demande de contenu ou un problème technique ?"
+                )
                 handler = self.platform_handlers.get(platform_tag)
                 if handler:
                     await handler.send(platform_user_id, clarification)
