@@ -1,6 +1,6 @@
 # Multiplaform Bridge Inbox - Discord unified inbox bot
 
-![Version](https://img.shields.io/badge/version-0.34.1-blue)
+![Version](https://img.shields.io/badge/version-0.34.2-blue)
 
 Bot Discord Python servant de bridge de messagerie unifiée.
 
@@ -287,6 +287,7 @@ Do NOT commit real credentials. Use `.env` and a proper secrets manager for prod
 - **feat**: canal de logs critiques `CRITICAL_LOG_CHANNEL_ID` pour les alertes importantes
 - **feat**: surveillance automatique des services avec alertes critiques si un service passe hors ligne
 - **fix**: suppression du doublon d'enregistrement de la commande `/link`
+- **fix**: correction de la syntaxe du healthcheck docker-compose
 
 ### v0.33.x
 
