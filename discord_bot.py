@@ -26,6 +26,7 @@ from integrations.admin_dashboard import AdminDashboard
 from integrations.expiration_alerts import ExpirationAlerts
 from integrations.sync_service import SyncService
 from integrations.invitation_manager import InvitationManager
+from integrations.poll_manager import PollView
 
 INBOX_CATEGORY_NAME = os.getenv("INBOX_CATEGORY_NAME", "📥 INBOX")
 BOT_NAME = os.getenv("BOT_NAME", "Akasha")
@@ -361,6 +362,20 @@ class DiscordBridge:
             limite="Nombre d'entrées à afficher (défaut 20, max 100)"
         )(logs_cmd)
         self.bot.tree.add_command(logs_cmd, guild=discord.Object(id=self.guild_id))
+
+        poll_cmd = app_commands.Command(
+            name="poll",
+            description="Crée un sondage simple (admin only)",
+            callback=self._poll_command
+        )
+        poll_cmd = app_commands.describe(
+            question="La question du sondage",
+            option1="Option 1",
+            option2="Option 2",
+            option3="Option 3",
+            option4="Option 4",
+        )(poll_cmd)
+        self.bot.tree.add_command(poll_cmd, guild=discord.Object(id=self.guild_id))
 
     async def _handle_inbound_dm(self, message: discord.Message):
         try:
@@ -904,6 +919,28 @@ class DiscordBridge:
             embed.add_field(name=f"Q: {question}", value=f"R: {value}", inline=False)
 
         await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    async def _poll_command(
+        self,
+        interaction: discord.Interaction,
+        question: str,
+        option1: str,
+        option2: str,
+        option3: str | None = None,
+        option4: str | None = None,
+    ):
+        if interaction.user.id != self.admin_id:
+            await interaction.response.send_message("Seul l'admin peut utiliser cette commande.", ephemeral=True)
+            return
+
+        options = [option1, option2]
+        if option3:
+            options.append(option3)
+        if option4:
+            options.append(option4)
+
+        view = PollView(question, options, author_id=interaction.user.id)
+        await interaction.response.send_message(embed=view.embed, view=view)
 
     async def _logs_command(self, interaction: discord.Interaction, limite: int = 20):
         if interaction.user.id != self.admin_id:
