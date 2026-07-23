@@ -1289,6 +1289,60 @@ class DiscordBridge:
         except Exception:
             logger.exception("Failed to post %s media notification", source)
 
+    async def handle_overseerr_webhook(self, payload: dict):
+        try:
+            notification_type = payload.get("notification_type", "UNKNOWN")
+            subject = payload.get("subject", "Notification Overseerr")
+            message = payload.get("message", "")
+            image = payload.get("image")
+            media = payload.get("media", {})
+            request_info = payload.get("request", {})
+            requested_by = request_info.get("requestedBy", {}) if request_info else {}
+            overseerr_discord_id = requested_by.get("discordId") or requested_by.get("discord_id")
+
+            overseerr_channel_id = os.getenv("OVERSEERR_WEBHOOK_CHANNEL_ID")
+            if overseerr_channel_id:
+                channel = self.bot.get_channel(int(overseerr_channel_id))
+                if channel:
+                    embed = discord.Embed(
+                        title=f"Overseerr — {subject}",
+                        description=message[:2048],
+                        color=discord.Color.blue(),
+                    )
+                    if media:
+                        embed.add_field(name="Média", value=media.get("title") or "N/A", inline=True)
+                        if media.get("year"):
+                            embed.add_field(name="Année", value=str(media.get("year")), inline=True)
+                        if media.get("type"):
+                            embed.add_field(name="Type", value=media.get("type"), inline=True)
+                    if image:
+                        embed.set_thumbnail(url=image)
+                    await channel.send(embed=embed)
+
+            if notification_type == "MEDIA_AVAILABLE" and overseerr_discord_id:
+                try:
+                    user_obj = await self.bot.fetch_user(int(overseerr_discord_id))
+                    if user_obj:
+                        title = media.get("title") or "Nouveau média"
+                        await user_obj.send(
+                            f"🎉 Bonne nouvelle ! **{title}** est maintenant disponible sur {BOT_NAME}."
+                        )
+                except discord.Forbidden:
+                    logger.warning("Cannot DM user %s for media available notification", overseerr_discord_id)
+                except Exception:
+                    logger.exception("Failed to notify user %s about available media", overseerr_discord_id)
+
+            try:
+                await self.db.log_audit(
+                    action=f"overseerr_{notification_type.lower()}",
+                    discord_id=str(overseerr_discord_id) if overseerr_discord_id else None,
+                    details=f"subject={subject}, media={media.get('title')}",
+                )
+            except Exception:
+                logger.exception("Failed to log Overseerr webhook")
+        except Exception:
+            logger.exception("Failed to handle Overseerr webhook")
+
     async def _notify_admin_auto_sync(self, result: dict):
         try:
             admin = await self.bot.fetch_user(self.admin_id)
