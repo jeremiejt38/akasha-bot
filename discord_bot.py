@@ -325,6 +325,16 @@ class DiscordBridge:
         )(support_cmd)
         self.bot.tree.add_command(support_cmd, guild=discord.Object(id=self.guild_id))
 
+        feedback_cmd = app_commands.Command(
+            name="feedback",
+            description="Envoie un feedback anonyme à l'équipe Akasha",
+            callback=self._feedback_command
+        )
+        feedback_cmd = app_commands.describe(
+            message="Ton message de feedback"
+        )(feedback_cmd)
+        self.bot.tree.add_command(feedback_cmd, guild=discord.Object(id=self.guild_id))
+
         faq_cmd = app_commands.Command(
             name="faq",
             description="Affiche les questions fréquentes",
@@ -840,6 +850,34 @@ class DiscordBridge:
             )
         except Exception:
             logger.exception("Failed to log admin note")
+
+    async def _feedback_command(self, interaction: discord.Interaction, message: str):
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        discord_id = str(interaction.user.id)
+
+        try:
+            admin = await self.bot.fetch_user(self.admin_id)
+            if admin:
+                await admin.send(
+                    f"💬 **Feedback de <@{discord_id}>**\n{message[:1500]}"
+                )
+            await interaction.followup.send(
+                f"✅ Feedback envoyé. Merci d'aider à améliorer {BOT_NAME} !", ephemeral=True
+            )
+
+            try:
+                await self.db.log_audit(
+                    action="feedback_sent",
+                    discord_id=discord_id,
+                    details=message[:200],
+                )
+            except Exception:
+                logger.exception("Failed to log feedback")
+        except Exception:
+            logger.exception("Feedback command failed for user %s", discord_id)
+            await interaction.followup.send(
+                f"❌ Impossible d'envoyer le feedback. Contacte l'équipe {BOT_NAME}.", ephemeral=True
+            )
 
     async def _faq_command(self, interaction: discord.Interaction):
         if not self.auto_responder:
