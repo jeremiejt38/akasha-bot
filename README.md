@@ -143,6 +143,7 @@ Available slash commands for members:
 - **`/logs [limite]`** — Shows recent audited actions: invitations, renewals, syncs, notes, role revocations, etc. (admin only).
 - **`/poll <question> <option1> <option2> [option3] [option4]`** — Creates a simple poll with up to 4 options. Users vote by clicking buttons and results update live (admin only).
 - **`/services`** — Shows the status and version of monitored Akasha services (Plex, Jellyfin, Overseerr, Wizarr, website) (admin only).
+- **`/stats`** — Shows advanced subscriber statistics: total, active, expired, pending renewals, expiring within 7/30 days, new this month, average trust score (admin only).
 
 ## Discord community onboarding
 
@@ -275,6 +276,7 @@ Do NOT commit real credentials. Use `.env` and a proper secrets manager for prod
 
 - **feat**: canal de log admin `ADMIN_LOG_CHANNEL_ID` pour centraliser les notifications admin
 - **feat**: commande admin `/services` pour surveiller l'état et les versions des services Akasha
+- **feat**: commande admin `/stats` avec statistiques avancées des abonnés
 
 ### v0.30.x
 
