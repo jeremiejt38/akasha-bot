@@ -1372,6 +1372,10 @@ class DiscordBridge:
     async def _send_auto_response(self, platform_tag: str, platform_user_id: str, channel, text: str, user_data: dict) -> bool:
         try:
             response = self.auto_responder.respond(text, user_data)
+            logger.info(
+                "Auto-responder result for %s user=%s: response=%r",
+                platform_tag, platform_user_id, response,
+            )
             if not response:
                 return False
 
@@ -1746,21 +1750,24 @@ class DiscordBridge:
                 answered = await self._send_auto_response(platform_tag, platform_user_id, channel, text, user_data)
 
             if not answered and platform_tag == "DC":
-                await self._notify_admin_unanswered(platform_user_id, text)
+                await self._notify_admin_unanswered(platform_user_id, text, channel)
 
             await self._bump_channel_to_top(channel)
         except Exception:
             logger.exception("Failed to post inbound message to Discord")
 
-    async def _notify_admin_unanswered(self, discord_id: str, text: str):
+    async def _notify_admin_unanswered(self, discord_id: str, text: str, channel=None):
         if not self.onboarding.config.support_dm_enabled:
             return
         try:
             admin = await self.bot.fetch_user(self.admin_id)
             if admin is None:
                 return
+            channel_link = f"https://discord.com/channels/{self.guild_id}/{channel.id}" if channel else ""
             await admin.send(
-                f"[Message en attente - {BOT_NAME}] de <@{discord_id}> (Discord ID: {discord_id}):\n{text[:1500]}"
+                f"[Message en attente - {BOT_NAME}] de <@{discord_id}> (Discord ID: {discord_id}):\n"
+                f"{text[:1500]}\n\n"
+                f"Channel inbox : {channel_link}"
             )
             logger.info("Notified admin about unanswered DM from user %s", discord_id)
         except discord.Forbidden:

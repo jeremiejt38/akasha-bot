@@ -52,7 +52,7 @@
     "answer": "Pour les tarifs et modalités d'abonnement, contacte l'admin. Il te donnera les infos actuelles."
   },
   {
-    "patterns": ["problème connexion", "je ne peux pas me connecter", "connexion", "login", "mot de passe", "ça ne marche pas"],
+    "patterns": ["problème connexion", "problèmes de connexion", "problème de connexion", "problèmes connexion", "je ne peux pas me connecter", "connexion", "login", "mot de passe", "ça ne marche pas"],
     "marker": "connection_check"
   },
   {
