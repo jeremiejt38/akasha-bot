@@ -36,6 +36,22 @@ def test_join_akasha():
     assert "inscription" in response["answer"]
 
 
+def test_corrected_plex_and_seerr_answers():
+    responder = AutoResponder(threshold=80)
+    testing_user = {"wizarr_invite_expires": "2030-01-01T00:00:00+00:00", "access_type": "trial"}
+
+    assert "Plex Pass" in responder.respond("Puis-je télécharger un film hors ligne ?", testing_user)
+    assert "Seerr" in responder.respond("Comment demander un film ?", testing_user)
+    assert "sans publicités" in responder.respond("Est-ce qu'il y a des pubs ?")
+
+
+def test_tariff_template_uses_environment_value(monkeypatch):
+    monkeypatch.setenv("IMG_TARIF", "https://example.test/tarifs.png")
+    responder = AutoResponder(threshold=80)
+
+    assert "https://example.test/tarifs.png" in responder.respond("Quels sont les prix ?")
+
+
 def test_custom_data_path():
     data = [
         {"patterns": ["test custom"], "answer": "réponse custom"},

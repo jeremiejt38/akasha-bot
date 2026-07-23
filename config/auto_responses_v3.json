@@ -36,16 +36,16 @@
     },
     {
       "patterns": ["c'est quoi akasha", "cest quoi akasha", "akasha c'est quoi", "akasha cest quoi", "qu'est-ce qu'akasha"],
-      "answer": "🎬 Akasha est une plateforme de streaming avec une vaste bibliothèque de films, séries et contenu premium.",
+      "answer": "🎬 Akasha est un écosystème de streaming privé : Plex est l'interface principale et Jellyfin une alternative gratuite. L'accès nécessite une invitation.",
       "min_access": "everyone"
     },
     {
-      "patterns": ["quels appareils sont supportés", "appareils compatibles", "compatible avec quoi", "android", "ios", "windows", "mac", "chromecast", "smart tv"],
-      "answer": "📱 Akasha est accessible sur ordinateurs, téléphones, Smart TV et appareils de streaming compatibles.",
+      "patterns": ["quels appareils sont supportés", "appareils compatibles", "compatible avec quoi", "sur quels appareils", "dispo de l'application", "application plex disponible"],
+      "answer": "📱 Plex est disponible sur :\n1. Smart TV et boîtiers : Android/Google TV, Apple TV, Fire TV, Roku, LG webOS et Samsung Tizen.\n2. Téléphones et tablettes : Android et iPhone/iPad.\n3. Ordinateurs : navigateur web, Windows et macOS.\n4. Streaming depuis mobile : Chromecast et AirPlay.\nJellyfin est aussi disponible sur Android/Google TV, Android, iPhone/iPad, LG webOS et navigateur web.",
       "min_access": "everyone"
     },
     {
-      "patterns": ["y a-t-il des pubs", "y a t il des pubs", "publicités", "publicites", "sans pub"],
+      "patterns": ["y a-t-il des pubs", "y a t il des pubs", "est-ce qu'il y a des pubs", "est ce qu'il y a des pubs", "publicités", "publicites", "sans pub"],
       "answer": "✅ Non ! Akasha est sans publicités.",
       "min_access": "everyone"
     },
@@ -215,6 +215,181 @@
       "template": "📺 Il te reste {seerr_remaining_seasons} demande(s) de saisons sur les dernières 24 h.",
       "fallback": "Impossible de récupérer ton quota séries. Réessaie plus tard.",
       "min_access": "testing"
+    },
+    {
+      "patterns": ["comment créer un compte plex", "comment creer un compte plex", "créer compte plex", "creer compte plex"],
+      "answer": "👤 Crée ton compte Plex sur https://plex.tv/sign-up avec ton e-mail, Google, Facebook ou Apple.",
+      "min_access": "everyone"
+    },
+    {
+      "patterns": ["j'ai reçu un code d'invitation", "j'ai recu un code d'invitation", "utiliser code invitation", "comment utiliser mon invitation"],
+      "answer": "🎟️ Va sur https://akasha.ing, clique sur « Frappez aux portes » puis saisis le code ou ouvre le lien d'invitation reçu.",
+      "min_access": "everyone"
+    },
+    {
+      "patterns": ["comment me connecter sur ma tv", "connexion plex tv", "connecter plex sur tv", "code plex tv", "plex.tv/link"],
+      "answer": "📺 Installe Plex sur ta TV, ouvre l'application puis utilise le code affiché à l'écran sur https://plex.tv/link après t'être connecté à ton compte Plex.",
+      "min_access": "testing"
+    },
+    {
+      "patterns": ["plex navigateur", "accéder à plex navigateur", "acceder a plex navigateur", "plex sur navigateur", "plex web"],
+      "answer": "🌐 Oui. Plex est accessible dans un navigateur via https://app.plex.tv, ainsi que par application sur les appareils compatibles.",
+      "min_access": "testing"
+    },
+    {
+      "patterns": ["jellyfin connexion", "me connecter à jellyfin", "me connecter a jellyfin", "adresse jellyfin"],
+      "answer": "🌐 Ouvre Jellyfin puis entre l'adresse https://j.akasha.ing. Utilise les identifiants et le mot de passe définis lors de ton inscription Akasha.",
+      "min_access": "testing"
+    },
+    {
+      "patterns": ["télécharger un film", "telecharger un film", "hors ligne", "visionnage hors ligne", "pourquoi je ne peux pas télécharger"],
+      "answer": "⬇️ Le téléchargement hors ligne dans Plex nécessite un Plex Pass payant, indépendant d'Akasha. Jellyfin peut être une alternative gratuite : https://j.akasha.ing.",
+      "min_access": "testing"
+    },
+    {
+      "patterns": ["plex pass obligatoire", "plex pass lié à akasha", "plex pass lie a akasha", "plex pass gratuit", "plex me demande de payer"],
+      "answer": "💡 Plex Pass n'est pas obligatoire pour utiliser Akasha et n'est pas lié à ton abonnement Akasha. Plex peut demander un achat unique pour débloquer la lecture dans son application mobile ; tu peux aussi utiliser Plex Web ou Jellyfin.",
+      "min_access": "testing"
+    },
+    {
+      "patterns": ["comment demander un film", "comment demander une série", "comment demander une serie", "demande ajout seerr", "je ne trouve pas un film"],
+      "answer": "🎬 Connecte-toi à Seerr avec ton compte Plex, recherche le titre puis clique sur « Demander ». Tu peux demander jusqu'à 7 films et 3 saisons par période glissante de 24 h.",
+      "min_access": "testing"
+    },
+    {
+      "patterns": ["statut de ma demande", "suivre ma demande", "demande acceptée", "demande acceptee", "demande seerr"],
+      "answer": "📋 Sur https://s.akasha.ing, ouvre ton profil puis « Demandes ». Le statut indique notamment : En attente, Approuvé, En cours de téléchargement ou Disponible.",
+      "min_access": "testing"
+    },
+    {
+      "patterns": ["demande disponible mais pas plex", "seerr disponible pas plex", "film disponible seerr introuvable plex"],
+      "answer": "⏳ L'import et l'analyse par Plex/Jellyfin peuvent prendre 5 à 10 minutes après le statut « Disponible ». Rafraîchis ensuite l'accueil ou redémarre l'application.",
+      "min_access": "testing"
+    },
+    {
+      "patterns": ["annuler demande seerr", "annuler ma demande", "demande faite par erreur"],
+      "answer": "↩️ Si la demande n'est pas encore traitée ou téléchargée, ouvre sa fiche dans Seerr puis clique sur « Annuler la demande ».",
+      "min_access": "testing"
+    },
+    {
+      "patterns": ["délai demande film", "delai demande film", "combien de temps pour une demande", "demande en attente longtemps"],
+      "answer": "⏱️ Un contenu déjà disponible peut arriver en moins de 10 minutes s'il est trouvé. Les titres très récents, rares ou sans sortie officielle peuvent demander plus de temps ou rester indisponibles.",
+      "min_access": "testing"
+    },
+    {
+      "patterns": ["qualité streaming", "qualite streaming", "changer la qualité", "changer la qualite", "vidéo saccade", "video saccade"],
+      "answer": "⚙️ Pendant la lecture, ouvre les paramètres puis « Qualité » et choisis une valeur manuelle. En cas de saccades, sélectionne une qualité plus basse ; avec une bonne connexion, utilise « Originale ».",
+      "min_access": "testing"
+    },
+    {
+      "patterns": ["changer sous-titres", "changer sous titres", "activer sous-titres", "changer langue audio", "piste audio"],
+      "answer": "💬 Pendant la lecture, ouvre le menu audio/sous-titres pour sélectionner la piste audio et les sous-titres. Des sous-titres SRT sont généralement plus fluides que les formats ASS ou PGS.",
+      "min_access": "testing"
+    },
+    {
+      "patterns": ["couleurs étranges", "couleurs etranges", "film trop sombre", "hdr trop sombre", "dolby vision"],
+      "answer": "🎨 Des couleurs délavées ou trop sombres peuvent venir d'un contenu HDR/Dolby Vision non pris en charge par l'écran. Essaie une version HD/1080p ou active le Tone Mapping si l'application le propose.",
+      "min_access": "testing"
+    },
+    {
+      "patterns": ["son décalé", "son decale", "audio décalé", "audio decale"],
+      "answer": "🔊 Un décalage audio est souvent lié à une barre de son ou au Bluetooth. Relance la lecture, puis ajuste le réglage « Décalage audio » du lecteur si nécessaire.",
+      "min_access": "testing"
+    },
+    {
+      "patterns": ["historique disparu", "progression disparue", "continuer à regarder disparu", "continuer a regarder disparu"],
+      "answer": "🔎 Vérifie que tu es connecté au bon compte : l'historique et la progression sont associés au compte, pas à l'appareil. La reprise se fait depuis « Continuer à regarder ».",
+      "min_access": "testing"
+    },
+    {
+      "patterns": ["partager mon compte", "plusieurs appareils en même temps", "plusieurs appareils en meme temps", "combien d'utilisateurs en même temps", "combien d utilisateurs en meme temps"],
+      "answer": "🏠 Tu peux utiliser ton compte sur plusieurs appareils. Pour regarder simultanément, les appareils doivent être connectés à la même box Internet.",
+      "min_access": "testing"
+    },
+    {
+      "patterns": ["film récent cinéma", "film recent cinema", "pourquoi film cinéma indisponible", "pourquoi film cinema indisponible", "version cam"],
+      "answer": "🎞️ Akasha n'ajoute pas de versions CAM filmées au cinéma. Les films sont ajoutés après leur sortie officielle en VOD, streaming ou Blu-ray/4K.",
+      "min_access": "testing"
+    },
+    {
+      "patterns": ["mes amis peuvent-ils voir ce que je regarde", "historique privé", "historique prive", "confidentialité historique", "confidentialite historique", "vie privée plex", "vie privee plex"],
+      "answer": "🔒 Non. Ton historique, ta progression et ta Watchlist sont privés par défaut. Tu peux gérer leur visibilité sur https://app.plex.tv/desktop/#!/settings/account, dans les paramètres de compte Plex.",
+      "min_access": "testing"
+    },
+    {
+      "patterns": ["vpn autorisé", "vpn autorise", "vpn plex", "vpn akasha", "utiliser un vpn"],
+      "answer": "✅ L'utilisation d'un VPN est autorisée. Selon sa localisation, il peut toutefois réduire le débit et provoquer des ralentissements.",
+      "min_access": "testing"
+    },
+    {
+      "patterns": ["réinitialiser mot de passe", "reinitialiser mot de passe", "mot de passe oublié", "mot de passe oublie"],
+      "answer": "🔑 Pour Plex, utilise https://plex.tv/pms/forgot. Pour Jellyfin, utilise « Mot de passe oublié » s'il est proposé ou contacte le support pour une réinitialisation manuelle.",
+      "min_access": "testing"
+    },
+    {
+      "patterns": ["connexion suspecte", "piratage compte plex", "quelqu'un connecté à mon compte", "quelqu'un connecte a mon compte"],
+      "answer": "⚠️ Change immédiatement ton mot de passe Plex ou Jellyfin et déconnecte les appareils inconnus. Lors d'un changement de mot de passe Plex, utilise l'option de déconnexion de tous les appareils.",
+      "min_access": "testing"
+    },
+    {
+      "patterns": ["vitesse internet nécessaire", "vitesse internet necessaire", "débit nécessaire streaming", "debit necessaire streaming"],
+      "answer": "📶 Pour le 1080p, prévois environ 15 à 25 Mb/s. Pour la 4K, une connexion fibre de 80 à 100 Mb/s est fortement conseillée.",
+      "min_access": "testing"
+    },
+    {
+      "patterns": ["akasha à l'étranger", "akasha a l'etranger", "plex en voyage", "utiliser akasha à l'étranger", "utiliser akasha a l etranger"],
+      "answer": "🌍 Oui. Tant que tu as une connexion Internet, tu peux te connecter à ton compte depuis l'étranger.",
+      "min_access": "testing"
+    },
+    {
+      "patterns": ["plex marche en 4g pas en wifi", "plex marche en 5g pas en wifi", "problème wifi plex", "probleme wifi plex"],
+      "answer": "📡 Cela peut venir du pare-feu de ta box ou du DNS de ton opérateur. Redémarre ta box, puis essaie un DNS public comme Cloudflare 1.1.1.1 si le problème persiste.",
+      "min_access": "testing"
+    },
+    {
+      "patterns": ["watch together", "regarder ensemble plex", "regarder avec des amis à distance", "regarder avec des amis a distance"],
+      "answer": "🎬 Watch Together synchronise la lecture avec d'autres utilisateurs Plex. Ouvre le film ou l'épisode, utilise le menu « … » puis « Regarder ensemble » et invite tes amis Plex.",
+      "min_access": "testing"
+    },
+    {
+      "patterns": ["contenus récemment ajoutés", "contenus recemment ajoutes", "nouveautés akasha", "nouveautes akasha", "derniers ajouts"],
+      "answer": "🆕 Consulte la section « Récemment ajoutés » sur l'accueil de Plex ou Jellyfin. Les nouveautés peuvent aussi être annoncées sur le Discord Akasha.",
+      "min_access": "testing"
+    },
+    {
+      "patterns": ["masquer contenu adulte", "masquer certaines catégories", "masquer certaines categories", "filtrer le contenu"],
+      "answer": "🙈 Dans les réglages de ton profil Plex/Jellyfin, tu peux gérer les bibliothèques affichées sur ton accueil et masquer les catégories que tu ne veux pas voir.",
+      "min_access": "testing"
+    },
+    {
+      "patterns": ["signaler un problème sur un film", "signaler un probleme sur un film", "fichier corrompu", "mauvais sous-titres", "mauvais sous titres"],
+      "answer": "🛠️ Pour un problème de fichier, d'audio ou de sous-titres, utilise « Signaler un problème » dans Seerr si disponible, ou écris `admin` pour contacter le support.",
+      "min_access": "testing"
+    },
+    {
+      "patterns": ["que se passe-t-il lorsque mon abonnement expire", "abonnement expiré que se passe-t-il", "abonnement expire que se passe t il"],
+      "answer": "⏸️ À l'expiration, l'accès aux bibliothèques Akasha est suspendu. Ta Watchlist, ta progression et ton historique restent conservés ; après renouvellement, tu reprends là où tu t'étais arrêté.",
+      "min_access": "testing"
+    },
+    {
+      "patterns": ["mon abonnement a expiré", "mon abonnement a expire", "je suis expiré", "je suis expire", "accès suspendu", "acces suspendu"],
+      "answer": "⏸️ Ton accès aux bibliothèques est suspendu après expiration. Tes données sont conservées ; écris `admin` si tu souhaites renouveler.",
+      "min_access": "expired"
+    },
+    {
+      "patterns": ["pourquoi image ne charge pas", "posters manquants", "affiches manquantes", "images des films manquantes"],
+      "answer": "🖼️ Cela peut venir de ta connexion ou d'une récupération de métadonnées encore en cours côté serveur. Réessaie plus tard ; si le problème persiste, écris `admin`.",
+      "min_access": "testing"
+    },
+    {
+      "patterns": ["app plante au démarrage", "app plante au demarrage", "application plex plante", "application jellyfin plante"],
+      "answer": "🔄 Ferme complètement l'application puis relance-la. Si nécessaire, vide son cache dans les paramètres ou réinstalle-la.",
+      "min_access": "testing"
+    },
+    {
+      "patterns": ["rejoindre discord", "lien discord", "serveur discord akasha"],
+      "answer": "💬 Après avoir utilisé ton code ou lien d'invitation Akasha, rejoins le Discord : https://discord.gg/rjcUSfdMJk. Tu pourras ensuite lier ton compte avec l'e-mail utilisé sur Plex.",
+      "min_access": "everyone"
     }
   ]
 }

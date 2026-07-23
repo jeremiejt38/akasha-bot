@@ -1,4 +1,5 @@
 import os
+import unicodedata
 import aiohttp
 
 
@@ -29,8 +30,12 @@ class TautulliClient:
         counts = {}
         for row in rows:
             name = (row.get("section_name") or row.get("library_name") or "").lower()
+            normalized_name = "".join(
+                character for character in unicodedata.normalize("NFKD", name)
+                if not unicodedata.combining(character)
+            ).replace("-", " ")
             count = int(row.get("count") or row.get("child_count") or row.get("parent_count") or 0)
-            counts[name] = count
+            counts[normalized_name] = count
         return counts
 
     async def get_active_stream_count(self):
