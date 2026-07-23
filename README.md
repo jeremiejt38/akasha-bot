@@ -161,6 +161,22 @@ SUPPORT_DM_ENABLED=true
 
 When a member DMs the bot and the auto-responder does not match a known answer, the bot forwards the message to an admin channel/DM so a human can reply. The conversation still creates an INBOX channel like any other platform.
 
+## Automatic expiration alerts
+
+The bot runs a daily background task that checks Wizarr invitation expiration dates and alerts the admin (and optionally the subscriber) when a membership is about to expire or has already expired.
+
+Configure with:
+
+```env
+EXPIRATION_WARNING_DAYS=7
+EXPIRATION_ALERT_HOUR=9
+EXPIRATION_NOTIFY_SUBSCRIBERS=true
+```
+
+- `EXPIRATION_WARNING_DAYS` — number of days before expiration to trigger an alert
+- `EXPIRATION_ALERT_HOUR` — UTC hour at which the daily check runs
+- `EXPIRATION_NOTIFY_SUBSCRIBERS` — also DM affected subscribers if `true`
+
 ## Debug mode
 Set `DEBUG=true` in `.env` to enable verbose logging. In debug mode, the bot prints:
 
