@@ -366,15 +366,22 @@ class ProblemReportFlow:
         except discord.Forbidden:
             logger.warning("Cannot notify admin about report %s", report_id)
         await interaction.response.send_message(f"Signalement `#{report_id}` envoyé.",ephemeral=True)
+    @staticmethod
+    def _format_date(value):
+        try:
+            return datetime.datetime.fromisoformat(value.replace("Z", "+00:00")).strftime("%d/%m/%y")
+        except (AttributeError, TypeError, ValueError):
+            return value or "Inconnue"
+
     def embed(self,r):
-        e=discord.Embed(title=f"{'✅ Résolu' if r['status']=='resolved' else '🆕 Signalement'} #{r['id']}",color=discord.Color.green() if r['status']=='resolved' else discord.Color.orange()); e.add_field(name="Utilisateur",value=f"<@{r['discord_id']}>",inline=True); e.add_field(name="Type",value=CATEGORIES[r['category']],inline=True); e.add_field(name="Source",value=(r.get("source") or "discord").title(),inline=True); e.add_field(name="Signalé",value=r['reported_at'],inline=False)
+        e=discord.Embed(title=f"{'✅ Résolu' if r['status']=='resolved' else '🆕 Signalement'} #{r['id']}",color=discord.Color.green() if r['status']=='resolved' else discord.Color.orange()); e.add_field(name="Utilisateur",value=f"<@{r['discord_id']}>",inline=True); e.add_field(name="Type",value=CATEGORIES[r['category']],inline=True); e.add_field(name="Source",value=(r.get("source") or "discord").title(),inline=True); e.add_field(name="Signalé",value=self._format_date(r.get("reported_at")),inline=False)
         e.add_field(name="Description du problème",value=(r.get("description") or "Aucune description.")[:1024],inline=False)
         if r.get('subcategory'): e.add_field(name="Sous-type",value=r['subcategory'],inline=True)
         if r.get('media_title'): e.add_field(name="Média",value=r['media_title'],inline=False)
         if r.get('admin_response'): e.add_field(name="Réponse",value=r['admin_response'],inline=False)
         if r.get('resolved_at'):
             resolved_by = f" par <@{r['admin_id']}>" if r.get("admin_id") else ""
-            e.add_field(name="Résolu",value=f"{r['resolved_at']}{resolved_by}",inline=False)
+            e.add_field(name="Résolu",value=f"{self._format_date(r['resolved_at'])}{resolved_by}",inline=False)
         return e
     async def reply(self,interaction,id,text):
         r=await self.db.get_problem_report(id)
