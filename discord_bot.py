@@ -413,14 +413,6 @@ class DiscordBridge:
         )
         self.bot.tree.add_command(stats_cmd, guild=discord.Object(id=self.guild_id))
 
-        link_cmd = app_commands.Command(
-            name="link",
-            description="Lie ton compte Discord à ton email Seerr",
-            callback=self._link_command
-        )
-        link_cmd = app_commands.describe(email="L'email de ton compte Seerr")(link_cmd)
-        self.bot.tree.add_command(link_cmd, guild=discord.Object(id=self.guild_id))
-
     async def _handle_inbound_dm(self, message: discord.Message):
         try:
             user_id = str(message.author.id)
@@ -1014,28 +1006,6 @@ class DiscordBridge:
             logger.exception("Services command failed")
             await interaction.followup.send(
                 f"❌ Impossible de récupérer l'état des services.", ephemeral=True
-            )
-
-    async def _link_command(self, interaction: discord.Interaction, email: str):
-        await interaction.response.defer(ephemeral=True, thinking=True)
-
-        try:
-            guild = self.bot.get_guild(self.guild_id) or await self.bot.fetch_guild(self.guild_id)
-            member = guild.get_member(interaction.user.id) or await guild.fetch_member(interaction.user.id)
-        except Exception:
-            logger.exception("Failed to resolve guild member for /link")
-            await interaction.followup.send(
-                f"Je n'arrive pas à te trouver sur le serveur. Rejoins le serveur Discord {BOT_NAME} d'abord.",
-                ephemeral=True,
-            )
-            return
-
-        success = await self.onboarding.process_email_link(member, email, interaction)
-        if not success:
-            await interaction.followup.send(
-                f"Cet email n'a pas été trouvé sur Seerr. "
-                f"Si tu n'as pas encore de compte, crée-le via {self.onboarding.config.seerr_signup_url} puis réessaie.",
-                ephemeral=True,
             )
 
     async def _stats_command(self, interaction: discord.Interaction):
