@@ -281,6 +281,7 @@ class OnboardingFlow:
         except Exception:
             logger.exception("Failed to update Discord ID in Overseerr for user %s", member.id)
 
+        now = datetime.datetime.utcnow().isoformat()
         await self.db.set_user(
             discord_id=str(member.id),
             email=email,
@@ -289,7 +290,8 @@ class OnboardingFlow:
             overseerr_username=overseerr_user.get("username") or overseerr_user.get("displayName"),
             overseerr_plex_username=plex_username,
             overseerr_discord_ids=str(member.id),
-            updated_at=datetime.datetime.utcnow().isoformat(),
+            created_at=now,
+            updated_at=now,
         )
 
         await self._finish_onboarding(member, await self.db.get_user_by_discord_id(str(member.id)))

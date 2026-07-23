@@ -21,6 +21,7 @@ from discord.ext import commands
 from integrations.auto_responder import AutoResponder
 from integrations.health_checker import HealthChecker, CONNECTION_CHECK_MARKER
 from integrations.onboarding import OnboardingFlow
+from integrations.admin_dashboard import AdminDashboard
 
 INBOX_CATEGORY_NAME = os.getenv("INBOX_CATEGORY_NAME", "📥 INBOX")
 BOT_NAME = os.getenv("BOT_NAME", "Akasha")
@@ -114,6 +115,7 @@ class DiscordBridge:
         self.auto_responder = AutoResponder() if enable_auto_responder else None
         self.health_checker = HealthChecker()
         self.onboarding = OnboardingFlow(self, overseerr_client, db)
+        self.admin_dashboard = AdminDashboard(self, db, overseerr_client)
         self._ready_event = asyncio.Event()
         self._closed = False
         self._bot_task = None
@@ -256,6 +258,13 @@ class DiscordBridge:
         )
         self.bot.tree.add_command(status_cmd, guild=discord.Object(id=self.guild_id))
 
+        dashboard_cmd = app_commands.Command(
+            name="dashboard",
+            description="Ouvre le tableau de bord admin interactif (admin only)",
+            callback=self._dashboard_command
+        )
+        self.bot.tree.add_command(dashboard_cmd, guild=discord.Object(id=self.guild_id))
+
     async def _handle_inbound_dm(self, message: discord.Message):
         try:
             user_id = str(message.author.id)
@@ -388,6 +397,9 @@ class DiscordBridge:
             if self.tracearr_client and plex_username:
                 tracearr_data = await self.tracearr_client.find_user_by_username(plex_username)
 
+            now = datetime.datetime.utcnow().isoformat()
+            existing_user = await self.db.get_user_by_discord_id(requester_discord_id)
+            created_at = existing_user.get("created_at") if existing_user else now
             await self.db.set_user(
                 discord_id=requester_discord_id,
                 email=email_clean,
@@ -398,6 +410,8 @@ class DiscordBridge:
                 overseerr_discord_ids=",".join([requester_discord_id] + existing_ids_str),
                 wizarr_invite_code=wizarr_invite_code,
                 wizarr_invite_expires=wizarr_invite_expires,
+                created_at=created_at,
+                months_subscribed=existing_user.get("months_subscribed") if existing_user else 0,
                 tracearr_user_id=tracearr_data.get("id") if tracearr_data else None,
                 tracearr_username=tracearr_data.get("username") if tracearr_data else None,
                 tracearr_trust_score=tracearr_data.get("trustScore") if tracearr_data else None,
@@ -405,7 +419,7 @@ class DiscordBridge:
                 tracearr_session_count=tracearr_data.get("sessionCount") if tracearr_data else None,
                 tracearr_last_activity=tracearr_data.get("lastActivityAt") if tracearr_data else None,
                 tracearr_stats=json.dumps(tracearr_data) if tracearr_data else None,
-                updated_at=datetime.datetime.utcnow().isoformat(),
+                updated_at=now,
             )
 
             lines = [f"Compte lié avec succès à **{overseerr_user.get('email', email_clean)}** ({overseerr_user.get('displayName') or overseerr_user.get('plexUsername') or 'utilisateur'})."]
@@ -485,10 +499,13 @@ class DiscordBridge:
 
             # Store the invitation for Discord users so stacking works next time
             if platform == "DC":
+                user = await self.db.get_user_by_discord_id(platform_user_id)
+                months = (user.get("months_subscribed") or 0) + max(1, int(duration_days / 30))
                 await self.db.update_user(
                     platform_user_id,
                     wizarr_invite_code=code,
                     wizarr_invite_expires=invite.get("expires"),
+                    months_subscribed=months,
                     updated_at=datetime.datetime.utcnow().isoformat(),
                 )
 
@@ -673,6 +690,12 @@ class DiscordBridge:
             await interaction.followup.send(
                 f"Impossible de vérifier l'état des services. Contacte l'équipe {BOT_NAME}.", ephemeral=True
             )
+
+    async def _dashboard_command(self, interaction: discord.Interaction):
+        if interaction.user.id != self.admin_id:
+            await interaction.response.send_message("Seul l'admin peut utiliser cette commande.", ephemeral=True)
+            return
+        await self.admin_dashboard.send_dashboard(interaction)
 
     async def _get_user_data_for_inbound(self, platform_tag: str, platform_user_id: str):
         if platform_tag == "DC":
