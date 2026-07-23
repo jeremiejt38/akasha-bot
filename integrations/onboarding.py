@@ -317,6 +317,13 @@ class OnboardingFlow:
             lines.append("\nLiens utiles :")
             lines.extend(links)
 
+        lines.append("\nCommandes disponibles :")
+        lines.append("- `/account` — voir tes infos et ton expiration")
+        lines.append("- `/request <titre>` — demander un film/série")
+        lines.append("- `/renew` — demander le renouvellement")
+        lines.append("- `/support <sujet> <description>` — contacter l'équipe")
+        lines.append("- `/faq` — questions fréquentes")
+
         lines.append(
             f"\nSi tu as des questions, écris-moi directement ici en réponse à ce message. "
             f"L'équipe {BOT_NAME} te répondra ou te mettra en relation avec un admin."
