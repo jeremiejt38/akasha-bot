@@ -151,10 +151,17 @@ client.on('message', async (message) => {
     if (MESSAGE_PROCESS_DELAY_MS > 0) {
       await new Promise((resolve) => setTimeout(resolve, MESSAGE_PROCESS_DELAY_MS));
     }
-    const chat = await message.getChat();
-    const contact = await message.getContact();
-    const displayName = contact.pushname || contact.name || contact.number || 'unknown';
-    const platformUserId = contact.id && contact.id._serialized ? contact.id._serialized : contact.number;
+    const platformUserId = message.from || message.author;
+    let displayName = message._data?.notifyName || platformUserId || 'unknown';
+    try {
+      const contact = await message.getContact();
+      displayName = contact.pushname || contact.name || contact.number || displayName;
+    } catch (err) {
+      console.warn('[WA] Could not resolve sender contact:', err.message);
+    }
+    if (!platformUserId) {
+      throw new Error('WhatsApp message has no sender identifier');
+    }
     const payload = {
       platform: 'WA',
       platform_user_id: platformUserId,
@@ -192,7 +199,7 @@ client.on('message', async (message) => {
 
     await postInboundToBridge(payload);
   } catch (err) {
-    console.error('[WA] Error handling inbound message:', err.message);
+    console.error('[WA] Error handling inbound message:', err);
   }
 });
 
