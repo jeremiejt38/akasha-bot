@@ -132,6 +132,7 @@ Available slash commands for members:
   - **Stats** — overall statistics
 - **`/reload`** — Reloads the auto-responder configuration from `config/auto_responses.json` without restarting the bot (admin only).
 - **`/note <@membre> <texte>`** — Adds a private admin note on a subscriber (admin only). Notes are visible in the `/dashboard` subscriber list.
+- **`/sync [@membre]`** — Synchronizes one subscriber or all subscribers with Overseerr: updates Discord ID, username, Plex username and (re)assigns the member role (admin only).
 
 ## Discord community onboarding
 
