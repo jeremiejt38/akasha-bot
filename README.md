@@ -187,6 +187,27 @@ EXPIRATION_NOTIFY_SUBSCRIBERS=true
 - `EXPIRATION_NOTIFY_SUBSCRIBERS` — also DM affected subscribers if `true`
 - `REVOKE_ROLE_ON_EXPIRATION` — automatically remove the member role from expired subscribers if `true`
 
+## Media webhook notifications
+
+You can configure Plex and Jellyfin to send webhook events to the bot when a new item is added. The bot will post a Discord embed to the configured channel.
+
+Configure the following environment variables:
+
+```env
+PLEX_WEBHOOK_CHANNEL_ID=123456789012345678
+JELLYFIN_WEBHOOK_CHANNEL_ID=123456789012345678
+```
+
+Then point your server webhooks to:
+
+- Plex: `https://bot.akasha.ing/webhooks/plex`
+- Jellyfin: `https://bot.akasha.ing/webhooks/jellyfin`
+
+Supported events:
+
+- **Plex**: `library.new`, `media.scrobble`
+- **Jellyfin**: `ItemAdded`, `PlaybackStart`
+
 ## Automatic synchronization
 
 The bot runs a background sync job every `AUTO_SYNC_INTERVAL_HOURS` hours (default 24). It synchronizes all known subscribers with Overseerr (updates Discord ID, usernames, Plex username) and reassigns the member role if missing. The admin is notified by DM if any sync fails.
