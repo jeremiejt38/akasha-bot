@@ -1,6 +1,9 @@
 import os
 import asyncio
 import base64
+import hashlib
+import hmac
+import json
 import logging
 import threading
 from aiohttp import web
@@ -20,6 +23,7 @@ class WebhookServer:
         self.port = int(os.getenv("WEBHOOK_PORT", "8000"))
         self.api_token = os.getenv("BRIDGE_API_TOKEN", "")
         self.meta_verify_token = os.getenv("META_VERIFY_TOKEN", "")
+        self.meta_app_secret = os.getenv("META_APP_SECRET", "")
         self.plex_channel_id = os.getenv("PLEX_WEBHOOK_CHANNEL_ID")
         self.jellyfin_channel_id = os.getenv("JELLYFIN_WEBHOOK_CHANNEL_ID")
         self.overseerr_channel_id = os.getenv("OVERSEERR_WEBHOOK_CHANNEL_ID")
@@ -87,7 +91,16 @@ class WebhookServer:
     async def meta_webhook(self, request: web.Request):
         logger.debug("Meta webhook received from %s", request.remote)
         try:
-            payload = await request.json()
+            body = await request.read()
+            if self.meta_app_secret:
+                received_signature = request.headers.get("X-Hub-Signature-256", "")
+                expected_signature = "sha256=" + hmac.new(
+                    self.meta_app_secret.encode(), body, hashlib.sha256
+                ).hexdigest()
+                if not hmac.compare_digest(received_signature, expected_signature):
+                    logger.warning("Meta webhook unauthorized from %s", request.remote)
+                    return web.json_response({"error": "unauthorized"}, status=401)
+            payload = json.loads(body)
             platform = detect_meta_platform(payload)
             logger.info("Meta webhook payload received (platform=%s)", platform)
             logger.debug("Meta payload object=%s entries=%s", payload.get("object"), len(payload.get("entry", [])))
