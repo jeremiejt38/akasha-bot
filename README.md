@@ -1,6 +1,6 @@
 # Multiplaform Bridge Inbox - Discord unified inbox bot
 
-![Version](https://img.shields.io/badge/version-0.31.0-blue)
+![Version](https://img.shields.io/badge/version-0.32.0-blue)
 
 Bot Discord Python servant de bridge de messagerie unifiée.
 
@@ -272,11 +272,14 @@ Do NOT commit real credentials. Use `.env` and a proper secrets manager for prod
 
 ## Changelog
 
-### v0.31.x ← *actuel*
+### v0.32.x ← *actuel*
+
+- **feat**: commande admin `/stats` avec statistiques avancées des abonnés
+
+### v0.31.x
 
 - **feat**: canal de log admin `ADMIN_LOG_CHANNEL_ID` pour centraliser les notifications admin
 - **feat**: commande admin `/services` pour surveiller l'état et les versions des services Akasha
-- **feat**: commande admin `/stats` avec statistiques avancées des abonnés
 
 ### v0.30.x
 
