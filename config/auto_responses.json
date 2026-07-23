@@ -30,6 +30,12 @@
     "needs_user": true
   },
   {
+    "patterns": ["mon profil", "profil akasha", "mes informations", "mon compte akasha", "infos compte"],
+    "template": "Profil Akasha : {overseerr_username:compte lié}\nExpiration : {wizarr_invite_expires:%d/%m/%Y}.",
+    "fallback": "Je n'ai pas encore trouvé de profil Akasha lié à cette messagerie. Utilise ton code d'invitation puis réécris-moi, ou contacte l'admin.",
+    "needs_user": true
+  },
+  {
     "patterns": ["trust score", "mon score", "score de confiance", "tracearr", "mon trust score"],
     "template": "Ton trust score actuel est de {tracearr_trust_score:N/A}.",
     "fallback": "Je n'ai pas de données de trust score pour ton compte. Assure-toi d'avoir lié ton compte avec /link.",

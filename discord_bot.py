@@ -1749,17 +1749,21 @@ class DiscordBridge:
                     await channel.send(embed=embed)
 
             if notification_type == "MEDIA_AVAILABLE" and overseerr_discord_id:
-                try:
-                    user_obj = await self.bot.fetch_user(int(overseerr_discord_id))
-                    if user_obj:
-                        title = media.get("title") or "Nouveau média"
-                        await user_obj.send(
-                            f"🎉 Bonne nouvelle ! **{title}** est maintenant disponible sur {BOT_NAME}."
-                        )
-                except discord.Forbidden:
-                    logger.warning("Cannot DM user %s for media available notification", overseerr_discord_id)
-                except Exception:
-                    logger.exception("Failed to notify user %s about available media", overseerr_discord_id)
+                user_data = await self.db.get_user_by_discord_id(str(overseerr_discord_id))
+                if user_data is None or bool(user_data.get("dm_request_notifications", 1)):
+                    try:
+                        user_obj = await self.bot.fetch_user(int(overseerr_discord_id))
+                        if user_obj:
+                            title = media.get("title") or "Nouveau média"
+                            await user_obj.send(
+                                f"🎉 Bonne nouvelle ! **{title}** est maintenant disponible sur {BOT_NAME}."
+                            )
+                    except discord.Forbidden:
+                        logger.warning("Cannot DM user %s for media available notification", overseerr_discord_id)
+                    except Exception:
+                        logger.exception("Failed to notify user %s about available media", overseerr_discord_id)
+                else:
+                    logger.info("Skipped media available DM for user %s because notifications are disabled", overseerr_discord_id)
 
             try:
                 await self.db.log_audit(
