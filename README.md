@@ -1,6 +1,6 @@
 # Multiplaform Bridge Inbox - Discord unified inbox bot
 
-![Version](https://img.shields.io/badge/version-0.20.0-blue)
+![Version](https://img.shields.io/badge/version-0.21.0-blue)
 
 Bot Discord Python servant de bridge de messagerie unifiée.
 
@@ -225,7 +225,12 @@ Do NOT commit real credentials. Use `.env` and a proper secrets manager for prod
 
 ## Changelog
 
-### v0.20.x ← *actuel*
+### v0.21.x ← *actuel*
+
+- **feat**: révocation automatique du rôle membre à l'expiration de l'abonnement
+- **feat**: variable `REVOKE_ROLE_ON_EXPIRATION` pour activer/désactiver la révocation
+
+### v0.20.x
 
 - **feat**: synchronisation automatique avec Overseerr en arrière-plan toutes les X heures
 - **feat**: notification admin en cas d'échec du sync automatique
