@@ -1,5 +1,7 @@
 # Multiplaform Bridge Inbox - Discord unified inbox bot
 
+![Version](https://img.shields.io/badge/version-0.2.0-blue)
+
 Bot Discord Python servant de bridge de messagerie unifiée.
 
 This bot centralizes inbound messages from several platforms (Telegram, WhatsApp, Instagram, Facebook Messenger, Snapchat, TikTok) into a single Discord server, creating one channel per user and per platform.
@@ -62,11 +64,46 @@ For deployment behind an existing Traefik reverse proxy (e.g. on the Akasha serv
 
 The bot will be available at `https://bot.akasha.ing` and Meta webhooks should point to `https://bot.akasha.ing/webhooks/meta`.
 
+## Auto-responder configuration
+
+The auto-responder Q&A is stored in `config/auto_responses.json` instead of Python code. This makes it easy to add or edit answers without touching the codebase.
+
+Format of an entry:
+
+```json
+{
+  "patterns": ["mot", "phrase équivalente"],
+  "answer": "Réponse statique"
+}
+```
+
+Or with user-data templating:
+
+```json
+{
+  "patterns": ["mon compte expire quand"],
+  "template": "Ton compte est actif jusqu'au {wizarr_invite_expires:%d/%m/%Y}.",
+  "fallback": "Je n'ai pas trouvé d'invitation liée à ton compte.",
+  "needs_user": true
+}
+```
+
+Special markers:
+
+```json
+{
+  "patterns": ["problème connexion"],
+  "marker": "connection_check"
+}
+```
+
+Change the path with `AUTO_RESPONDER_DATA_PATH` in `.env`.
+
 ## Tests / checks
 Run syntax checks directly on the host (no Lando needed):
 
 ```bash
-python3 -m py_compile main.py discord_bot.py database.py webhook_server.py platforms/*.py tests/*.py
+python3 -m py_compile main.py discord_bot.py database.py webhook_server.py integrations/*.py platforms/*.py tests/*.py
 node --check node_whatsapp/index.js
 ```
 
@@ -75,6 +112,35 @@ Run the small pytest suite:
 ```bash
 pytest tests -q
 ```
+
+## Discord community onboarding
+
+For community-enabled Discord servers, the bot can automate member onboarding:
+
+1. When a user joins the guild (`on_member_join`) or finishes Discord's native onboarding (`on_member_update` with `completed_onboarding`), the bot sends them a DM.
+2. The bot first checks its local database and Overseerr for a linked Discord ID.
+3. If the account is already known, the bot assigns the configured member role (`Abonné` by default) and sends a welcome confirmation DM.
+4. If not, the bot sends a DM with a **"Lier mon compte Seerr"** button that opens an email modal.
+5. The email is verified against Overseerr:
+   - **Found**: the Discord ID is synced to Overseerr, the user is stored locally, the member role is assigned, and a confirmation DM is sent.
+   - **Not found**: the user is offered a link to create an account on Seerr (`https://s.akasha.ing`) and can retry.
+
+Configure with:
+
+```env
+BOT_NAME=Akasha
+ONBOARDING_DM_ENABLED=true
+MEMBER_ROLE_NAME=Abonné
+CREATE_MEMBER_ROLE=true
+SEERR_SIGNUP_URL=https://s.akasha.ing
+SUPPORT_DM_ENABLED=true
+```
+
+`BOT_NAME` is used in DMs, embeds and notifications so the bot is identified consistently across the server.
+
+## Support DMs
+
+When a member DMs the bot and the auto-responder does not match a known answer, the bot forwards the message to an admin channel/DM so a human can reply. The conversation still creates an INBOX channel like any other platform.
 
 ## Debug mode
 Set `DEBUG=true` in `.env` to enable verbose logging. In debug mode, the bot prints:
@@ -107,3 +173,30 @@ Inbound messages are routed automatically based on the webhook payload (`object:
 ## Security
 Do NOT commit real credentials. Use `.env` and a proper secrets manager for production.
 
+## Changelog
+
+### v0.2.x ← *actuel*
+
+- **feat**: onboarding automatique Discord — détection nouveaux membres, vérification compte Seerr, attribution du rôle `Abonné`, modal email et DM de confirmation
+- **feat**: support DM avec notification admin quand l'auto-respondant n'a pas de réponse
+- **feat**: configuration `BOT_NAME=Akasha` utilisée dans tous les messages du bot
+- **feat**: auto-responder externalisé dans `config/auto_responses.json` avec templating et reload à chaud
+- **docs**: ajout des liens Plex (`p.akasha.ing`) et Jellyfin (`j.akasha.ing`) dans les messages
+
+## Roadmap
+
+### Pré-v1.0.0
+
+- [x] Onboarding automatique Discord avec rôle membre
+- [x] Auto-responder externalisé et éditable sans code
+- [x] Liaison Overseerr/Seerr via `/link`
+- [x] Gestion des invitations Wizarr via `/invite`
+- [x] Inbox unifiée multi-plateformes
+- [ ] Commande admin de reload de l'auto-responder sans redémarrage
+- [ ] Statistiques d'utilisation des réponses auto-respondant
+- [ ] Support multi-guildes
+
+### Post-v1.0.0
+
+- [ ] Panneau web de configuration
+- [ ] Logs et monitoring avancés
