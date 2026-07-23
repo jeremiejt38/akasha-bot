@@ -22,6 +22,7 @@ from integrations.auto_responder import AutoResponder
 from integrations.health_checker import HealthChecker, CONNECTION_CHECK_MARKER
 from integrations.onboarding import OnboardingFlow
 from integrations.admin_dashboard import AdminDashboard
+from integrations.expiration_alerts import ExpirationAlerts
 
 INBOX_CATEGORY_NAME = os.getenv("INBOX_CATEGORY_NAME", "📥 INBOX")
 BOT_NAME = os.getenv("BOT_NAME", "Akasha")
@@ -116,6 +117,7 @@ class DiscordBridge:
         self.health_checker = HealthChecker()
         self.onboarding = OnboardingFlow(self, overseerr_client, db)
         self.admin_dashboard = AdminDashboard(self, db, overseerr_client)
+        self.expiration_alerts = ExpirationAlerts(self, db, guild_id, admin_id)
         self._ready_event = asyncio.Event()
         self._closed = False
         self._bot_task = None
@@ -770,6 +772,12 @@ class DiscordBridge:
         loop = asyncio.get_event_loop()
         self._bot_task = loop.create_task(self.bot.start(token))
         await self._ready_event.wait()
+        self.expiration_alerts.start()
+
+    async def close(self):
+        self._closed = True
+        self.expiration_alerts.stop()
+        await self.bot.close()
 
     def register_platform_handler(self, platform_tag: str, handler):
         self.platform_handlers[platform_tag] = handler
