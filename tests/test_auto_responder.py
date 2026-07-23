@@ -66,3 +66,30 @@ def test_reload_picks_up_new_data():
         assert responder.respond("après") == "réponse après"
     finally:
         os.unlink(path)
+
+
+def test_min_access_hierarchy():
+    data = [
+        {"patterns": ["base"], "answer": "base", "min_access": "everyone"},
+        {"patterns": ["expired"], "answer": "expired", "fallback": "denied", "min_access": "expired"},
+        {"patterns": ["testing"], "answer": "testing", "fallback": "denied", "min_access": "testing"},
+        {"patterns": ["subscriber"], "answer": "subscriber", "fallback": "denied", "min_access": "subscriber"},
+    ]
+    with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8") as f:
+        json.dump(data, f)
+        path = f.name
+    try:
+        responder = AutoResponder(threshold=100, data_path=path)
+        expired = {"wizarr_invite_expires": "2020-01-01T00:00:00+00:00"}
+        testing = {"wizarr_invite_expires": "2030-01-01T00:00:00+00:00", "access_type": "trial"}
+        subscriber = {"wizarr_invite_expires": "2030-01-01T00:00:00+00:00", "access_type": "subscriber"}
+
+        assert responder.respond("base") == "base"
+        assert responder.respond("expired") == "denied"
+        assert responder.respond("expired", expired) == "expired"
+        assert responder.respond("testing", expired) == "denied"
+        assert responder.respond("testing", testing) == "testing"
+        assert responder.respond("subscriber", testing) == "denied"
+        assert responder.respond("subscriber", subscriber) == "subscriber"
+    finally:
+        os.unlink(path)

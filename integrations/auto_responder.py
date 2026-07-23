@@ -12,6 +12,7 @@ DEFAULT_THRESHOLD = int(os.getenv("AUTO_RESPONDER_THRESHOLD", "80"))
 DEFAULT_DATA_PATH = os.getenv("AUTO_RESPONDER_DATA_PATH", "./config/auto_responses.json")
 
 DATE_FIELDS = ("expires", "activity")
+ACCESS_LEVELS = {"everyone": 1, "expired": 2, "testing": 3, "subscriber": 4}
 
 
 def _normalize(text: str) -> str:
@@ -34,6 +35,30 @@ def _format_field(name: str, value) -> str:
     if isinstance(value, str) and any(fragment in name.lower() for fragment in DATE_FIELDS):
         return _format_date(value)
     return str(value)
+
+
+def _get_access_level(user_data: dict | None) -> int:
+    user_data = user_data or {}
+    if not user_data:
+        return ACCESS_LEVELS["everyone"]
+
+    expires = user_data.get("wizarr_invite_expires")
+    if expires:
+        try:
+            expires_at = datetime.fromisoformat(expires.replace("Z", "+00:00"))
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.astimezone()
+            if expires_at <= datetime.now(expires_at.tzinfo):
+                return ACCESS_LEVELS["expired"]
+        except (TypeError, ValueError):
+            pass
+
+    access_type = str(user_data.get("access_type") or "").lower()
+    if access_type in {"trial", "testing"}:
+        return ACCESS_LEVELS["testing"]
+    if access_type in {"subscriber", "subscribed"}:
+        return ACCESS_LEVELS["subscriber"]
+    return ACCESS_LEVELS["expired"]
 
 
 def _render_template(template: str, user_data: dict | None) -> str:
@@ -116,6 +141,15 @@ class AutoResponder:
         if not best_entry:
             return None
 
+        required_access = best_entry.get("min_access")
+        if required_access:
+            required_level = ACCESS_LEVELS.get(required_access)
+            if required_level is None:
+                logger.warning("Auto-responder rule has an unknown min_access value: %s", required_access)
+                return best_entry.get("fallback")
+            if _get_access_level(user_data) < required_level:
+                return best_entry.get("fallback")
+
         # Special markers handled by the caller
         if best_entry.get("marker") == "connection_check":
             return CONNECTION_CHECK_MARKER
@@ -126,8 +160,6 @@ class AutoResponder:
 
         # Templated answer requiring user data
         if "template" in best_entry:
-            if best_entry.get("needs_user") and not user_data:
-                return best_entry.get("fallback")
             rendered = _render_template(best_entry["template"], user_data)
             if not rendered:
                 return best_entry.get("fallback")
