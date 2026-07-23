@@ -172,6 +172,7 @@ class DiscordBridge:
                 if guild:
                     await self.onboarding.ensure_verification_channel(guild)
                     await self.problem_reports.ensure_member_channel(guild)
+                    await self.problem_reports.ensure_admin_channel(guild)
                 else:
                     logger.warning("Guild %s not available to create verification channel", self.guild_id)
             except Exception:
