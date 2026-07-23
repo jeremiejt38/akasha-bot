@@ -1,4 +1,6 @@
 import os
+import json
+import re
 import logging
 from datetime import datetime
 from rapidfuzz import fuzz
@@ -7,6 +9,9 @@ from integrations.health_checker import CONNECTION_CHECK_MARKER
 logger = logging.getLogger(__name__)
 
 DEFAULT_THRESHOLD = int(os.getenv("AUTO_RESPONDER_THRESHOLD", "80"))
+DEFAULT_DATA_PATH = os.getenv("AUTO_RESPONDER_DATA_PATH", "./config/auto_responses.json")
+
+DATE_FIELDS = ("expires", "activity")
 
 
 def _normalize(text: str) -> str:
@@ -23,103 +28,99 @@ def _format_date(date_str: str) -> str:
         return date_str
 
 
-def _build_knowledge_base():
-    return [
-        {
-            "patterns": ["salut", "bonjour", "hey", "hello", "coucou", "bonsoir", "yo"],
-            "answer": "Salut ! Je suis le bot assistant d'Akasha. Comment puis-je t'aider ?",
-        },
-        {
-            "patterns": [
-                "comment s'inscrire",
-                "comment rejoindre",
-                "comment créer un compte",
-                "je veux un compte",
-                "demander une invitation",
-                "invitation",
-                "rejoindre akasha",
-            ],
-            "answer": "Pour rejoindre Akasha, demande une invitation à l'admin ou rends-toi sur https://akasha.ing et clique sur 'Frappez aux portes'.",
-        },
-        {
-            "patterns": [
-                "mon compte expire quand",
-                "date d'expiration",
-                "expiration",
-                "mon abonnement expire",
-                "jusqu'à quand",
-                "jusquà quand",
-                "quand expire",
-            ],
-            "answer": lambda u: (
-                f"Ton compte est actif jusqu'au {_format_date(u.get('wizarr_invite_expires'))}."
-                if u and u.get("wizarr_invite_expires")
-                else "Je n'ai pas trouvé d'invitation liée à ton compte. Contacte l'admin pour vérifier."
-            ),
-            "needs_user": True,
-        },
-        {
-            "patterns": ["trust score", "mon score", "score de confiance", "tracearr", "mon trust score"],
-            "answer": lambda u: (
-                f"Ton trust score actuel est de {u.get('tracearr_trust_score', 'N/A')}."
-                if u and u.get("tracearr_trust_score") is not None
-                else "Je n'ai pas de données de trust score pour ton compte. Assure-toi d'avoir lié ton compte avec /link."
-            ),
-            "needs_user": True,
-        },
-        {
-            "patterns": ["comment contacter l'admin", "qui est l'admin", "contact", "aide admin", "support"],
-            "answer": "Contacte l'admin directement sur Discord. Il est le seul à pouvoir gérer les invitations et les comptes.",
-        },
-        {
-            "patterns": ["lien compte", "lier mon compte", "link", "/link", "lier discord", "lier overseerr"],
-            "answer": "Utilise la commande `/link <email>` avec l'email de ton compte Akasha pour lier ton Discord et recevoir des réponses personnalisées.",
-        },
-        {
-            "patterns": ["c'est quoi akasha", "akasha", "présentation", "quel est ce serveur", "info"],
-            "answer": "Akasha est une plateforme de streaming privée. Tu peux y accéder via Plex ou Jellyfin avec une invitation.",
-        },
-        {
-            "patterns": ["prix", "abonnement", "combien ça coûte", "tarif", "payer", "subscription"],
-            "answer": "Pour les tarifs et modalités d'abonnement, contacte l'admin. Il te donnera les infos actuelles.",
-        },
-        {
-            "patterns": ["problème connexion", "je ne peux pas me connecter", "connexion", "login", "mot de passe", "ça ne marche pas"],
-            "answer": CONNECTION_CHECK_MARKER,
-        },
-        {
-            "patterns": ["merci", "super", "ok", "ça marche", "bien reçu"],
-            "answer": "Avec plaisir ! N'hésite pas si tu as d'autres questions.",
-        },
-    ]
+def _format_field(name: str, value) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str) and any(fragment in name.lower() for fragment in DATE_FIELDS):
+        return _format_date(value)
+    return str(value)
+
+
+def _render_template(template: str, user_data: dict | None) -> str:
+    user_data = user_data or {}
+
+    def _replacer(match: re.Match) -> str:
+        full = match.group(1)
+        if ":" in full:
+            key, default = full.split(":", 1)
+        else:
+            key, default = full, ""
+        value = user_data.get(key)
+        if value is None or value == "":
+            return default
+        return _format_field(key, value)
+
+    return re.sub(r"\{([^}]+)\}", _replacer, template)
+
+
+def _load_knowledge_base(path: str) -> list:
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if not isinstance(data, list):
+            logger.warning("Auto-responder data file %s is not a list; using empty knowledge base", path)
+            return []
+        return data
+    except FileNotFoundError:
+        logger.warning("Auto-responder data file %s not found; using empty knowledge base", path)
+        return []
+    except Exception:
+        logger.exception("Failed to load auto-responder data from %s", path)
+        return []
 
 
 class AutoResponder:
-    """Lightweight auto-responder using fuzzy string matching.
+    """Auto-responder that loads its Q&A from a JSON file.
 
-    Responds to generic questions with static answers. If ``needs_user`` is True,
-    the answer callable receives the user data dict loaded from the database.
+    The JSON file can contain static answers, templates with placeholders, and
+    special markers (like the connection-check marker).
     """
 
-    def __init__(self, threshold: int = None):
+    def __init__(self, threshold: int = None, data_path: str = None):
         self.threshold = threshold if threshold is not None else DEFAULT_THRESHOLD
-        self.knowledge = _build_knowledge_base()
+        self.data_path = data_path if data_path is not None else DEFAULT_DATA_PATH
+        self.knowledge = _load_knowledge_base(self.data_path)
+
+    def reload(self):
+        """Reload the knowledge base from disk. Useful for hot-updates."""
+        self.knowledge = _load_knowledge_base(self.data_path)
+        logger.info("Reloaded auto-responder knowledge base from %s", self.data_path)
 
     def respond(self, message: str, user_data: dict | None = None) -> str | None:
         text = _normalize(message)
         if not text:
             return None
+
         best_entry = None
         best_score = 0
         for entry in self.knowledge:
-            for pattern in entry["patterns"]:
+            for pattern in entry.get("patterns", []):
                 score = fuzz.partial_ratio(text, _normalize(pattern))
                 if score > best_score:
                     best_score = score
                     best_entry = entry
+
         if best_score < self.threshold:
             return None
-        answer = best_entry["answer"]
-        if callable(answer) and best_entry.get("needs_user"):
-            return answer(user_data)
-        return answer
+
+        if not best_entry:
+            return None
+
+        # Special markers handled by the caller
+        if best_entry.get("marker") == "connection_check":
+            return CONNECTION_CHECK_MARKER
+
+        # Static answer
+        if "answer" in best_entry:
+            return best_entry["answer"]
+
+        # Templated answer requiring user data
+        if "template" in best_entry:
+            if best_entry.get("needs_user") and not user_data:
+                return best_entry.get("fallback")
+            rendered = _render_template(best_entry["template"], user_data)
+            if not rendered:
+                return best_entry.get("fallback")
+            return rendered
+
+        return None

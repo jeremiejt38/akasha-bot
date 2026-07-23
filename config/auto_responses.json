@@ -1,0 +1,62 @@
+[
+  {
+    "patterns": ["salut", "bonjour", "hey", "hello", "coucou", "bonsoir", "yo"],
+    "answer": "Salut ! Je suis le bot assistant d'Akasha. Comment puis-je t'aider ?"
+  },
+  {
+    "patterns": [
+      "comment s'inscrire",
+      "comment rejoindre",
+      "comment créer un compte",
+      "je veux un compte",
+      "demander une invitation",
+      "invitation",
+      "rejoindre akasha"
+    ],
+    "answer": "Pour rejoindre Akasha, demande une invitation à l'admin ou rends-toi sur https://akasha.ing et clique sur 'Frappez aux portes'."
+  },
+  {
+    "patterns": [
+      "mon compte expire quand",
+      "date d'expiration",
+      "expiration",
+      "mon abonnement expire",
+      "jusqu'à quand",
+      "jusquà quand",
+      "quand expire"
+    ],
+    "template": "Ton compte est actif jusqu'au {wizarr_invite_expires:%d/%m/%Y}.",
+    "fallback": "Je n'ai pas trouvé d'invitation liée à ton compte. Contacte l'admin pour vérifier.",
+    "needs_user": true
+  },
+  {
+    "patterns": ["trust score", "mon score", "score de confiance", "tracearr", "mon trust score"],
+    "template": "Ton trust score actuel est de {tracearr_trust_score:N/A}.",
+    "fallback": "Je n'ai pas de données de trust score pour ton compte. Assure-toi d'avoir lié ton compte avec /link.",
+    "needs_user": true
+  },
+  {
+    "patterns": ["comment contacter l'admin", "qui est l'admin", "contact", "aide admin", "support"],
+    "answer": "Contacte l'admin directement sur Discord. Il est le seul à pouvoir gérer les invitations et les comptes."
+  },
+  {
+    "patterns": ["lien compte", "lier mon compte", "link", "/link", "lier discord", "lier overseerr"],
+    "answer": "Utilise la commande `/link <email>` avec l'email de ton compte Akasha pour lier ton Discord et recevoir des réponses personnalisées."
+  },
+  {
+    "patterns": ["c'est quoi akasha", "akasha", "présentation", "quel est ce serveur", "info"],
+    "answer": "Akasha est une plateforme de streaming privée. Tu peux y accéder via Plex ou Jellyfin avec une invitation."
+  },
+  {
+    "patterns": ["prix", "abonnement", "combien ça coûte", "tarif", "payer", "subscription"],
+    "answer": "Pour les tarifs et modalités d'abonnement, contacte l'admin. Il te donnera les infos actuelles."
+  },
+  {
+    "patterns": ["problème connexion", "je ne peux pas me connecter", "connexion", "login", "mot de passe", "ça ne marche pas"],
+    "marker": "connection_check"
+  },
+  {
+    "patterns": ["merci", "super", "ok", "ça marche", "bien reçu"],
+    "answer": "Avec plaisir ! N'hésite pas si tu as d'autres questions."
+  }
+]
