@@ -1,6 +1,6 @@
 # Multiplaform Bridge Inbox - Discord unified inbox bot
 
-![Version](https://img.shields.io/badge/version-0.39.1-blue)
+![Version](https://img.shields.io/badge/version-0.39.2-blue)
 
 Bot Discord Python servant de bridge de messagerie unifiée.
 
@@ -286,6 +286,7 @@ Do NOT commit real credentials. Use `.env` and a proper secrets manager for prod
 
 - **feat: tableau Administration/services avec suivi Docker Unraid, IP, ports, uptime et alertes après 2 minutes**
 - **fix: tableau services condensé et vérification des mises à jour par digest de registre**
+- **fix: permissions centralisées et synchronisées pour toute la catégorie Administration**
 
 ### v0.38.x
 
