@@ -131,6 +131,90 @@
       "answer": "⏳ J'ai transmis ta demande d'accès multi-foyers à l'admin.",
       "fallback": "Contacte l'admin pour discuter d'un accès multi-foyers.",
       "min_access": "subscriber"
+    },
+    {
+      "patterns": ["combien de contenu", "taille du catalogue", "catalogue akasha", "contenu disponible"],
+      "template": "📚 Le catalogue Akasha contient actuellement : {content_summary}.",
+      "fallback": "Le catalogue est indisponible pour le moment. Réessaie plus tard.",
+      "min_access": "testing"
+    },
+    {
+      "patterns": ["combien de films", "nombre de films", "total films", "films disponibles"],
+      "template": "🎬 Akasha propose actuellement {nb_films} films.",
+      "fallback": "Le nombre de films est indisponible pour le moment.",
+      "min_access": "testing"
+    },
+    {
+      "patterns": ["combien de séries", "combien de series", "nombre de séries", "series disponibles"],
+      "template": "📺 Akasha propose actuellement {nb_series} séries.",
+      "fallback": "Le nombre de séries est indisponible pour le moment.",
+      "min_access": "testing"
+    },
+    {
+      "patterns": ["combien d'animes", "nombre d'animes", "animes disponibles", "catalogue anime"],
+      "template": "🔮 Akasha propose actuellement {nb_animes} animes.",
+      "fallback": "Le nombre d'animes est indisponible pour le moment.",
+      "min_access": "testing"
+    },
+    {
+      "patterns": ["combien de cartoons", "nombre de cartoons", "cartoons disponibles", "catalogue cartoon"],
+      "template": "🧸 Akasha propose actuellement {nb_cartoons} cartoons.",
+      "fallback": "Le nombre de cartoons est indisponible pour le moment.",
+      "min_access": "testing"
+    },
+    {
+      "patterns": ["combien de dessins animés", "combien de dessins animes", "dessins animés disponibles", "dessins animes disponibles"],
+      "template": "🎨 Akasha propose actuellement {nb_dessins_animes} dessins animés.",
+      "fallback": "Le nombre de dessins animés est indisponible pour le moment.",
+      "min_access": "testing"
+    },
+    {
+      "patterns": ["combien de documentaires", "nombre de documentaires", "documentaires disponibles", "catalogue documentaire"],
+      "template": "🌍 Akasha propose actuellement {nb_documentaires} documentaires.",
+      "fallback": "Le nombre de documentaires est indisponible pour le moment.",
+      "min_access": "testing"
+    },
+    {
+      "patterns": ["combien de docuseries", "nombre de docuseries", "docuseries disponibles", "catalogue docuseries"],
+      "template": "📖 Akasha propose actuellement {nb_docuseries} docuseries.",
+      "fallback": "Le nombre de docuseries est indisponible pour le moment.",
+      "min_access": "testing"
+    },
+    {
+      "patterns": ["combien d'émissions", "combien d emissions", "nombre d'émissions tv", "emissions tv disponibles"],
+      "template": "📺 Akasha propose actuellement {nb_emissions_tv} émissions TV.",
+      "fallback": "Le nombre d'émissions TV est indisponible pour le moment.",
+      "min_access": "testing"
+    },
+    {
+      "patterns": ["combien de spectacles", "nombre de spectacles", "one man show", "spectacles disponibles"],
+      "template": "🎭 Akasha propose actuellement {nb_spectacles} spectacles.",
+      "fallback": "Le nombre de spectacles est indisponible pour le moment.",
+      "min_access": "testing"
+    },
+    {
+      "patterns": ["combien d'utilisateurs actifs", "utilisateurs en ligne", "combien regarde", "sessions actives"],
+      "template": "👥 Il y a actuellement {nb_user_actif} session(s) active(s) sur Akasha.",
+      "fallback": "Le nombre de sessions actives est indisponible pour le moment.",
+      "min_access": "testing"
+    },
+    {
+      "patterns": ["quota restant", "demandes restantes", "combien de demandes restantes", "quota seerr"],
+      "template": "📊 Il te reste {seerr_remaining_movies} demande(s) de films et {seerr_remaining_seasons} saison(s) sur 24 h.",
+      "fallback": "Impossible de récupérer tes quotas de demandes. Réessaie plus tard.",
+      "min_access": "testing"
+    },
+    {
+      "patterns": ["films restants", "quota films", "combien de films je peux demander", "demandes films restantes"],
+      "template": "🎬 Il te reste {seerr_remaining_movies} demande(s) de films sur les dernières 24 h.",
+      "fallback": "Impossible de récupérer ton quota films. Réessaie plus tard.",
+      "min_access": "testing"
+    },
+    {
+      "patterns": ["saisons restantes", "quota séries", "quota series", "combien de saisons je peux demander"],
+      "template": "📺 Il te reste {seerr_remaining_seasons} demande(s) de saisons sur les dernières 24 h.",
+      "fallback": "Impossible de récupérer ton quota séries. Réessaie plus tard.",
+      "min_access": "testing"
     }
   ]
 }

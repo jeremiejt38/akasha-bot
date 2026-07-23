@@ -1,6 +1,7 @@
 import os
 import asyncio
 import logging
+from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode, quote
 import aiohttp
 
@@ -122,6 +123,28 @@ class OverseerrClient:
 
     async def get_tv_season(self, media_id: int, season_number: int):
         return await self._request("GET", f"/tv/{media_id}/season/{season_number}")
+
+    async def get_user_request_quota(self, user_id: int, movie_limit: int = 7, season_limit: int = 3):
+        data = await self._request("GET", "/request", params={"take": 1000, "skip": 0, "userId": user_id})
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+        movies = seasons = 0
+        for request in data.get("results", []):
+            created_at = request.get("createdAt")
+            try:
+                created = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+            except (AttributeError, TypeError, ValueError):
+                continue
+            if created < cutoff:
+                continue
+            media_type = (request.get("type") or request.get("media", {}).get("mediaType") or "").lower()
+            if media_type == "movie":
+                movies += 1
+            elif media_type == "tv":
+                seasons += len(request.get("seasons") or [None])
+        return {
+            "seerr_remaining_movies": max(0, movie_limit - movies),
+            "seerr_remaining_seasons": max(0, season_limit - seasons),
+        }
 
     async def request_media(self, media_type: str, media_id: int, user_id: int):
         """Create a media request in Overseerr.

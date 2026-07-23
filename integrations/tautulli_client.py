@@ -23,6 +23,20 @@ class TautulliClient:
             payload = await response.json()
         return (payload.get("response") or {}).get("data") or {}
 
+    async def get_library_statistics(self):
+        libraries = await self._request("get_libraries_table", length=1000, start=0)
+        rows = libraries.get("data") or []
+        counts = {}
+        for row in rows:
+            name = (row.get("section_name") or row.get("library_name") or "").lower()
+            count = int(row.get("count") or row.get("child_count") or row.get("parent_count") or 0)
+            counts[name] = count
+        return counts
+
+    async def get_active_stream_count(self):
+        activity = await self._request("get_activity")
+        return int(activity.get("stream_count") or len(activity.get("sessions") or []))
+
     async def get_user_statistics_by_email(self, email):
         if not email or not self.configured:
             return None

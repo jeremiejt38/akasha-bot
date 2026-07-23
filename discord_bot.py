@@ -151,6 +151,7 @@ class DiscordBridge:
         self._inbox_channel_locks: dict[tuple[str, str], asyncio.Lock] = {}
         self._closed = False
         self._bot_task = None
+        self._faq_statistics_cache: tuple[datetime.datetime, dict] | None = None
 
         @self.bot.event
         async def on_ready():
@@ -1516,6 +1517,54 @@ class DiscordBridge:
         except Exception:
             logger.exception("Failed to bump channel %s to top", channel.id)
 
+    async def _get_auto_response_template_data(self, user_data: dict | None) -> dict:
+        data = dict(user_data or {})
+        now = datetime.datetime.now(datetime.timezone.utc)
+        cached_at, cached_data = self._faq_statistics_cache or (None, {})
+        if cached_at is None or now - cached_at >= datetime.timedelta(minutes=10):
+            cached_data = {}
+            if self.tautulli_client and self.tautulli_client.configured:
+                try:
+                    libraries = await self.tautulli_client.get_library_statistics()
+                    def library_count(*terms):
+                        for name, count in libraries.items():
+                            if any(term in name for term in terms):
+                                return count
+                        return None
+                    category_terms = {
+                        "nb_films": ("film", "movie"),
+                        "nb_series": ("série", "serie", "tv show"),
+                        "nb_animes": ("anime",),
+                        "nb_cartoons": ("cartoon",),
+                        "nb_dessins_animes": ("dessin", "animation"),
+                        "nb_documentaires": ("documentaire",),
+                        "nb_docuseries": ("docuserie", "docu série"),
+                        "nb_emissions_tv": ("émission", "emission"),
+                        "nb_spectacles": ("spectacle", "comédie", "comedie"),
+                    }
+                    for key, terms in category_terms.items():
+                        value = library_count(*terms)
+                        if value is not None:
+                            cached_data[key] = value
+                    cached_data["nb_user_actif"] = await self.tautulli_client.get_active_stream_count()
+                    summary = []
+                    for key, label in (("nb_films", "films"), ("nb_series", "séries"), ("nb_animes", "animes"), ("nb_documentaires", "documentaires")):
+                        if key in cached_data:
+                            summary.append(f"{cached_data[key]} {label}")
+                    if summary:
+                        cached_data["content_summary"] = ", ".join(summary)
+                except Exception:
+                    logger.exception("Failed to collect Tautulli FAQ statistics")
+            self._faq_statistics_cache = (now, cached_data)
+        data.update(cached_data)
+        overseerr_id = data.get("overseerr_id")
+        if self.overseerr_client and overseerr_id:
+            try:
+                data.update(await self.overseerr_client.get_user_request_quota(int(overseerr_id)))
+            except Exception:
+                logger.exception("Failed to collect Seerr FAQ quota for user %s", overseerr_id)
+        return data
+
     async def _handle_auto_response_marker(self, marker: str, answer: str | None, fallback: str | None, platform_tag: str, platform_user_id: str, channel, user_data: dict | None) -> str | None:
         if marker.startswith("notify_admin_"):
             labels = {
@@ -1556,7 +1605,7 @@ class DiscordBridge:
 
     async def _send_auto_response(self, platform_tag: str, platform_user_id: str, channel, text: str, user_data: dict) -> bool:
         try:
-            response = self.auto_responder.respond(text, user_data)
+            response = self.auto_responder.respond(text, await self._get_auto_response_template_data(user_data))
             logger.info(
                 "Auto-responder result for %s user=%s: response=%r",
                 platform_tag, platform_user_id, response,

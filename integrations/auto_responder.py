@@ -82,6 +82,19 @@ def _expiration_relative(expires: str | None) -> str | None:
         return None
 
 
+def _template_has_missing_value(template: str, user_data: dict | None) -> bool:
+    user_data = user_data or {}
+    for match in re.finditer(r"\{([^}]+)\}", template):
+        full = match.group(1)
+        key, separator, default = full.partition(":")
+        if separator and default:
+            continue
+        value = _expiration_relative(user_data.get("wizarr_invite_expires")) if key == "wizarr_invite_expires_relative" else user_data.get(key, os.getenv(key))
+        if value is None or value == "":
+            return True
+    return False
+
+
 def _render_template(template: str, user_data: dict | None) -> str:
     user_data = user_data or {}
 
@@ -189,6 +202,8 @@ class AutoResponder:
 
         # Templated answer requiring user data
         if "template" in best_entry:
+            if _template_has_missing_value(best_entry["template"], user_data):
+                return best_entry.get("fallback")
             rendered = _render_template(best_entry["template"], user_data)
             if not rendered:
                 return best_entry.get("fallback")
