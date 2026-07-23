@@ -3,6 +3,7 @@ import logging
 import os
 import discord
 from discord import ui
+from integrations.admin_access import ensure_admin_category_access
 from integrations.plex_reports_client import PlexReportsClient
 
 logger = logging.getLogger(__name__)
@@ -438,16 +439,10 @@ class ProblemReportFlow:
         embed=discord.Embed(title="Signaler un problème",description="Utilise le bouton ci-dessous pour signaler un souci Plex, Seerr ou de lecture. Tes informations restent privées.",color=discord.Color.orange())
         await channel.send(embed=embed,view=ReportPanel(self)); return channel
     async def ensure_admin_channel(self,guild):
-        category=discord.utils.get(guild.categories,name="Administration") or await guild.create_category("Administration")
+        category=await ensure_admin_category_access(guild, self.admin_id)
         channel=discord.utils.get(category.text_channels,name="signalements")
-        overwrites={guild.default_role:discord.PermissionOverwrite(view_channel=False)}
-        admin_member=guild.get_member(self.admin_id)
-        if admin_member:
-            overwrites[admin_member]=discord.PermissionOverwrite(view_channel=True,read_message_history=True,send_messages=True)
         if channel is None:
-            channel=await guild.create_text_channel("signalements",category=category,overwrites=overwrites,reason="Akasha problem reports")
-        else:
-            await channel.edit(overwrites=overwrites,reason="Managed by Akasha problem reports")
+            channel=await guild.create_text_channel("signalements",category=category,reason="Akasha problem reports")
         if await self._find_admin_dashboard(channel):
             return channel
         await channel.send("Tableau des signalements :",view=AdminReportDashboard(self))
