@@ -9,7 +9,7 @@ from integrations.health_checker import CONNECTION_CHECK_MARKER
 logger = logging.getLogger(__name__)
 
 DEFAULT_THRESHOLD = int(os.getenv("AUTO_RESPONDER_THRESHOLD", "80"))
-DEFAULT_DATA_PATH = os.getenv("AUTO_RESPONDER_DATA_PATH", "./config/auto_responses.json")
+DEFAULT_DATA_PATH = os.getenv("AUTO_RESPONDER_DATA_PATH", "./config/auto_responses_v3.json")
 
 DATE_FIELDS = ("expires", "activity")
 ACCESS_LEVELS = {"everyone": 1, "expired": 2, "testing": 3, "subscriber": 4}
@@ -61,6 +61,27 @@ def _get_access_level(user_data: dict | None) -> int:
     return ACCESS_LEVELS["expired"]
 
 
+def _expiration_relative(expires: str | None) -> str | None:
+    if not expires:
+        return None
+    try:
+        expires_at = datetime.fromisoformat(expires.replace("Z", "+00:00"))
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.astimezone()
+        seconds = int((expires_at - datetime.now(expires_at.tzinfo)).total_seconds())
+        if seconds <= 0:
+            return "expiré"
+        days = seconds // 86400
+        if days >= 14:
+            return f"dans {days // 7} semaine{'s' if days // 7 > 1 else ''}"
+        if days >= 1:
+            return f"dans {days} jour{'s' if days > 1 else ''}"
+        hours = max(1, seconds // 3600)
+        return f"dans {hours} heure{'s' if hours > 1 else ''}"
+    except (TypeError, ValueError):
+        return None
+
+
 def _render_template(template: str, user_data: dict | None) -> str:
     user_data = user_data or {}
 
@@ -70,7 +91,7 @@ def _render_template(template: str, user_data: dict | None) -> str:
             key, default = full.split(":", 1)
         else:
             key, default = full, ""
-        value = user_data.get(key)
+        value = _expiration_relative(user_data.get("wizarr_invite_expires")) if key == "wizarr_invite_expires_relative" else user_data.get(key, os.getenv(key))
         if value is None or value == "":
             return default
         return _format_field(key, value)
@@ -82,8 +103,10 @@ def _load_knowledge_base(path: str) -> list:
     try:
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
+        if isinstance(data, dict):
+            data = data.get("entries")
         if not isinstance(data, list):
-            logger.warning("Auto-responder data file %s is not a list; using empty knowledge base", path)
+            logger.warning("Auto-responder data file %s has no entries list; using empty knowledge base", path)
             return []
         return data
     except FileNotFoundError:
@@ -153,6 +176,12 @@ class AutoResponder:
         # Special markers handled by the caller
         if best_entry.get("marker") == "connection_check":
             return CONNECTION_CHECK_MARKER
+        if best_entry.get("marker"):
+            return {
+                "marker": best_entry["marker"],
+                "answer": best_entry.get("answer"),
+                "fallback": best_entry.get("fallback"),
+            }
 
         # Static answer
         if "answer" in best_entry:

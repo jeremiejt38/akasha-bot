@@ -1516,6 +1516,44 @@ class DiscordBridge:
         except Exception:
             logger.exception("Failed to bump channel %s to top", channel.id)
 
+    async def _handle_auto_response_marker(self, marker: str, answer: str | None, fallback: str | None, platform_tag: str, platform_user_id: str, channel, user_data: dict | None) -> str | None:
+        if marker.startswith("notify_admin_"):
+            labels = {
+                "notify_admin_human_contact": "souhaite parler à un humain",
+                "notify_admin_multi_foyer_request": "demande un accès multi-foyers",
+                "notify_admin_signup_request": "demande une inscription",
+                "notify_admin_subscription_request": "demande un abonnement ou un renouvellement",
+                "notify_admin_trial_request": "demande un essai",
+            }
+            label = labels.get(marker)
+            if not label:
+                return fallback
+            try:
+                admin = await self.bot.fetch_user(self.admin_id)
+                channel_link = f"https://discord.com/channels/{self.guild_id}/{channel.id}"
+                await admin.send(f"[Demande Akasha] [{platform_tag}] utilisateur {platform_user_id} {label}.\nChannel INBOX : {channel_link}")
+                return answer or fallback
+            except Exception:
+                logger.exception("Failed to notify admin for marker %s", marker)
+                return fallback
+
+        if marker == "server_status_check":
+            results = await self.health_checker.check_all()
+            return answer if all(result["ok"] for result in results) else fallback
+
+        if marker == "check_subscription_status":
+            expires = (user_data or {}).get("wizarr_invite_expires")
+            try:
+                expires_at = datetime.datetime.fromisoformat(expires.replace("Z", "+00:00"))
+                if expires_at.tzinfo is None:
+                    expires_at = expires_at.replace(tzinfo=datetime.timezone.utc)
+                return answer if expires_at > datetime.datetime.now(datetime.timezone.utc) else fallback
+            except (AttributeError, TypeError, ValueError):
+                return fallback
+
+        logger.warning("Unknown auto-response marker: %s", marker)
+        return fallback
+
     async def _send_auto_response(self, platform_tag: str, platform_user_id: str, channel, text: str, user_data: dict) -> bool:
         try:
             response = self.auto_responder.respond(text, user_data)
@@ -1530,6 +1568,13 @@ class DiscordBridge:
                 logger.info("Health check triggered for %s user=%s", platform_tag, platform_user_id)
                 results = await self.health_checker.check_all()
                 response = self.health_checker.format_results(results)
+            elif isinstance(response, dict):
+                response = await self._handle_auto_response_marker(
+                    response["marker"], response.get("answer"), response.get("fallback"),
+                    platform_tag, platform_user_id, channel, user_data,
+                )
+                if not response:
+                    return False
 
             logger.info("Auto-responding to %s user=%s with matched answer", platform_tag, platform_user_id)
             handler = self.platform_handlers.get(platform_tag)

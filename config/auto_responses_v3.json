@@ -1,0 +1,136 @@
+{
+  "version": "final_v3",
+  "bot": "Akasha",
+  "last_updated": "2026-07-23T23:05:00Z",
+  "entries": [
+    {
+      "patterns": ["salut", "bonjour", "hey", "hello", "coucou", "bonsoir", "yo", "ça va", "ca va"],
+      "answer": "👋 Salut ! Je suis le bot assistant d'Akasha. Comment puis-je t'aider ?",
+      "min_access": "everyone"
+    },
+    {
+      "patterns": ["parler à quelqu'un", "parler a quelqu'un", "parler à un humain", "parler a un humain", "contacter le support", "je veux un humain", "vrai personne", "pas un bot"],
+      "marker": "notify_admin_human_contact",
+      "answer": "⏳ Je préviens l'admin que tu souhaites lui parler directement. Merci de patienter.",
+      "fallback": "Contacte l'admin depuis le serveur Discord.",
+      "min_access": "everyone"
+    },
+    {
+      "patterns": ["je voudrais m'inscrire", "je veux m'inscrire", "comment s'inscrire", "comment rejoindre", "comment créer un compte", "demander une invitation", "je veux un compte", "invitation", "rejoindre akasha"],
+      "marker": "notify_admin_signup_request",
+      "answer": "👍 J'ai signalé ta demande d'inscription à l'admin. Il reviendra vers toi rapidement !",
+      "fallback": "Contacte l'admin pour demander une inscription.",
+      "min_access": "everyone"
+    },
+    {
+      "patterns": ["quels sont les prix", "quel est le prix", "combien ça coûte", "combien ca coute", "tarif", "tarifs", "prix abonnement"],
+      "template": "💰 Voici la grille tarifaire actuelle :\n{IMG_TARIF}",
+      "fallback": "Contacte l'admin pour connaître les tarifs actuels.",
+      "min_access": "everyone"
+    },
+    {
+      "patterns": ["quels sont les moyens de paiement", "comment payer", "modes de paiement", "paiement", "payer comment"],
+      "template": "💳 Moyens de paiement acceptés :\n{PAYMENT_METHODS}",
+      "fallback": "Contacte l'admin pour connaître les modalités de paiement.",
+      "min_access": "everyone"
+    },
+    {
+      "patterns": ["c'est quoi akasha", "cest quoi akasha", "akasha c'est quoi", "akasha cest quoi", "qu'est-ce qu'akasha"],
+      "answer": "🎬 Akasha est une plateforme de streaming avec une vaste bibliothèque de films, séries et contenu premium.",
+      "min_access": "everyone"
+    },
+    {
+      "patterns": ["quels appareils sont supportés", "appareils compatibles", "compatible avec quoi", "android", "ios", "windows", "mac", "chromecast", "smart tv"],
+      "answer": "📱 Akasha est accessible sur ordinateurs, téléphones, Smart TV et appareils de streaming compatibles.",
+      "min_access": "everyone"
+    },
+    {
+      "patterns": ["y a-t-il des pubs", "y a t il des pubs", "publicités", "publicites", "sans pub"],
+      "answer": "✅ Non ! Akasha est sans publicités.",
+      "min_access": "everyone"
+    },
+    {
+      "patterns": ["combien de films en tout", "combien de series", "nombre de films", "nombre de series", "taille catalogue", "taille bibliotheque", "combien de contenu"],
+      "template": "📊 Notre bibliothèque compte actuellement : 🎬 {nb_films} films 📺 {nb_series} séries.",
+      "fallback": "Contacte l'admin pour connaître la taille actuelle du catalogue.",
+      "min_access": "everyone"
+    },
+    {
+      "patterns": ["server status", "le serveur est down", "serveur down", "offline", "plus d'accès", "plus d acces"],
+      "marker": "server_status_check",
+      "answer": "✅ Le serveur Akasha semble fonctionner correctement.",
+      "fallback": "⚠️ Le serveur semble avoir un problème. L'équipe a été prévenue.",
+      "min_access": "everyone"
+    },
+    {
+      "patterns": ["mon compte expire quand", "mon compte expire", "date expiration", "date d'expiration", "jusqu'à quand", "quand expire", "expiration"],
+      "template": "📅 Ton compte est actif jusqu'au {wizarr_invite_expires:%d/%m/%Y}.",
+      "fallback": "Je n'ai pas trouvé d'invitation liée à ton compte. Contacte l'admin.",
+      "min_access": "expired"
+    },
+    {
+      "patterns": ["il me reste combien de temps", "temps restant", "durée restante", "expiration bientôt", "expiration bientot"],
+      "template": "⏱️ Il te reste {wizarr_invite_expires_relative} avant expiration.",
+      "fallback": "Impossible de calculer le temps restant. Contacte l'admin.",
+      "min_access": "expired"
+    },
+    {
+      "patterns": ["mon abonnement est actif", "statut abonnement", "accès bibliothèque", "je ne vois pas les films", "bibliothèque invisible"],
+      "marker": "check_subscription_status",
+      "answer": "✅ Ton abonnement est actif. Si les bibliothèques restent invisibles, déconnecte-toi puis reconnecte-toi sur Plex.",
+      "fallback": "🔒 Ton abonnement est expiré ou introuvable. Contacte l'admin pour renouveler ton accès.",
+      "min_access": "expired"
+    },
+    {
+      "patterns": ["renouveler abonnement", "renouveler mon compte", "prolonger", "extension", "renew subscription"],
+      "marker": "notify_admin_subscription_request",
+      "answer": "✅ J'ai signalé ta demande de prolongation à l'admin. Il te contactera pour les modalités.",
+      "fallback": "Contacte l'admin pour renouveler ton accès.",
+      "min_access": "expired"
+    },
+    {
+      "patterns": ["mon profil", "profil akasha", "mes infos", "mes informations", "mon compte akasha", "infos compte"],
+      "template": "👤 Profil Akasha :\n📱 Compte lié : {overseerr_username:inconnu}\n📅 Expiration : {wizarr_invite_expires:%d/%m/%Y}",
+      "fallback": "Je n'ai pas trouvé de profil Akasha lié à cette messagerie.",
+      "min_access": "expired"
+    },
+    {
+      "patterns": ["trust score", "mon score", "score de confiance", "tracearr", "mon trust score"],
+      "template": "🎯 Ton trust score actuel est de {tracearr_trust_score:N/A}.",
+      "fallback": "Je n'arrive pas à récupérer ton trust score. Contacte l'admin.",
+      "min_access": "expired"
+    },
+    {
+      "patterns": ["je demande un essai", "je veux un essai", "trial", "période d'essai", "free trial", "tester akasha"],
+      "marker": "notify_admin_trial_request",
+      "answer": "🎁 J'ai signalé ta demande d'essai gratuit à l'admin.",
+      "fallback": "Contacte l'admin pour demander un essai.",
+      "min_access": "testing"
+    },
+    {
+      "patterns": ["quel contenu est disponible", "quels films", "quelles séries", "catalogue"],
+      "template": "🎬 Akasha propose actuellement {content_summary}.",
+      "fallback": "Contacte l'admin pour connaître le contenu disponible.",
+      "min_access": "testing"
+    },
+    {
+      "patterns": ["quota restant", "demande restante", "demandes restantes aujourd'hui", "quota demande"],
+      "template": "📊 Quotas de demandes restants : 🎬 Films : {seerr_remaining_movies} / 7 · 📺 Saisons : {seerr_remaining_seasons} / 3.",
+      "fallback": "Impossible de récupérer tes quotas Seerr. Réessaie plus tard.",
+      "min_access": "testing"
+    },
+    {
+      "patterns": ["options abonné", "options abonne", "subscriber benefits", "avantages", "privileges"],
+      "template": "👑 En tant qu'abonné, tu accèdes à la bibliothèque complète ({nb_films} films, {nb_series} séries) et à la priorité sur les demandes.",
+      "fallback": "Contacte l'admin pour connaître tes avantages d'abonné.",
+      "min_access": "subscriber"
+    },
+    {
+      "patterns": ["multi foyer", "multi-foyer", "plusieurs maisons", "plusieurs domiciles", "accès famille", "offre famille"],
+      "marker": "notify_admin_multi_foyer_request",
+      "answer": "⏳ J'ai transmis ta demande d'accès multi-foyers à l'admin.",
+      "fallback": "Contacte l'admin pour discuter d'un accès multi-foyers.",
+      "min_access": "subscriber"
+    }
+  ]
+}

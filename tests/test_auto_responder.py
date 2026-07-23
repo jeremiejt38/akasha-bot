@@ -10,7 +10,7 @@ from integrations.auto_responder import AutoResponder
 
 def test_greeting_match():
     responder = AutoResponder(threshold=80)
-    assert responder.respond("Salut !") == "Salut ! Je suis le bot assistant d'Akasha. Comment puis-je t'aider ?"
+    assert responder.respond("Salut !") == "👋 Salut ! Je suis le bot assistant d'Akasha. Comment puis-je t'aider ?"
 
 
 def test_no_match():
@@ -31,7 +31,9 @@ def test_subscription_expiration_no_user():
 
 def test_join_akasha():
     responder = AutoResponder(threshold=80)
-    assert "akasha.ing" in responder.respond("Comment rejoindre Akasha ?")
+    response = responder.respond("Comment rejoindre Akasha ?")
+    assert response["marker"] == "notify_admin_signup_request"
+    assert "inscription" in response["answer"]
 
 
 def test_custom_data_path():

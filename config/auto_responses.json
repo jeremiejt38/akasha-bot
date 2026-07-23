@@ -64,5 +64,19 @@
   {
     "patterns": ["merci", "super", "ok", "ça marche", "bien reçu"],
     "answer": "Avec plaisir ! N'hésite pas si tu as d'autres questions."
+  },
+  {
+    "patterns": ["mon abonnement est actif", "statut abonnement", "accès bibliothèque", "je ne vois pas les films", "bibliothèque invisible"],
+    "marker": "check_subscription_status",
+    "answer": "✅ Ton abonnement est actif. Si les bibliothèques restent invisibles, déconnecte-toi puis reconnecte-toi sur Plex.",
+    "fallback": "🔒 Ton abonnement est expiré ou introuvable. Contacte l'admin pour renouveler ton accès.",
+    "min_access": "expired"
+  },
+  {
+    "patterns": ["multi foyer", "multi-foyer", "plusieurs maisons", "plusieurs domiciles", "accès famille", "offre famille"],
+    "marker": "notify_admin_multi_foyer_request",
+    "answer": "⏳ J'ai transmis ta demande d'accès multi-foyers à l'admin. Il te recontactera avec les modalités.",
+    "fallback": "Contacte l'admin pour discuter d'un accès multi-foyers.",
+    "min_access": "subscriber"
   }
 ]
