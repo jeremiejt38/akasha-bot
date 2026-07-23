@@ -517,22 +517,22 @@ class DiscordBridge:
                         await interaction.followup.send(f"{BOT_NAME} n'a pas réussi à redémarrer le pont WhatsApp.", ephemeral=True)
                         return
 
-                qr_text = None
+                qr_image = None
                 for _ in range(15):
                     await asyncio.sleep(2)
-                    async with session.get(f"{base_url}/qr", timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                    async with session.get(f"{base_url}/qr.png", timeout=aiohttp.ClientTimeout(total=5)) as resp:
                         if resp.status == 200:
-                            data = await resp.json()
-                            qr_text = data.get("qr_text")
-                            if qr_text:
+                            qr_image = await resp.read()
+                            if qr_image:
                                 break
 
-            if not qr_text:
+            if not qr_image:
                 await interaction.followup.send("Aucun QR code n'a été généré. WhatsApp est peut-être déjà connecté.", ephemeral=True)
                 return
 
             try:
-                await interaction.user.send(f"Scan this QR code with WhatsApp to authenticate:\n```\n{qr_text}\n```")
+                qr_file = discord.File(io.BytesIO(qr_image), filename="whatsapp-pairing-qr.png")
+                await interaction.user.send("Scanne ce QR depuis WhatsApp > Appareils connectés > Connecter un appareil.", file=qr_file)
                 await interaction.followup.send("QR code envoyé en DM.", ephemeral=True)
             except discord.Forbidden:
                 await interaction.followup.send("Je ne peux pas t'envoyer de DM. Active les messages directs.", ephemeral=True)

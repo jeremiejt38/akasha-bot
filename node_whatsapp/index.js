@@ -3,6 +3,7 @@ const path = require('path');
 const express = require('express');
 const axios = require('axios');
 const qrcode = require('qrcode-terminal');
+const QRCode = require('qrcode');
 const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 
 const PORT = process.env.WA_PORT || 3001;
@@ -206,6 +207,20 @@ app.get('/qr', (req, res) => {
     res.json({ qr: latestQr, qr_text: latestQrText });
   } else {
     res.status(404).json({ error: 'No QR code available' });
+  }
+});
+
+app.get('/qr.png', async (req, res) => {
+  if (!latestQr) {
+    res.status(404).json({ error: 'No QR code available' });
+    return;
+  }
+  try {
+    const image = await QRCode.toBuffer(latestQr, { type: 'png', margin: 1, width: 640 });
+    res.type('png').send(image);
+  } catch (err) {
+    console.error('[WA] Failed to generate QR image:', err.message);
+    res.status(500).json({ error: 'Failed to generate QR image' });
   }
 });
 
