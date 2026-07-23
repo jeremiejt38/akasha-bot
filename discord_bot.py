@@ -25,6 +25,39 @@ from integrations.onboarding import OnboardingFlow
 INBOX_CATEGORY_NAME = os.getenv("INBOX_CATEGORY_NAME", "📥 INBOX")
 BOT_NAME = os.getenv("BOT_NAME", "Akasha")
 
+
+class RequestConfirmView(discord.ui.View):
+    def __init__(self, discord_bridge, overseerr_user_id: int, media_type: str, media_id: int, title: str):
+        super().__init__(timeout=60)
+        self.discord_bridge = discord_bridge
+        self.overseerr_user_id = overseerr_user_id
+        self.media_type = media_type
+        self.media_id = media_id
+        self.title = title
+
+    @discord.ui.button(label="Confirmer la demande", style=discord.ButtonStyle.primary)
+    async def confirm(self, interaction: discord.Interaction, _button: discord.ui.Button):
+        if not self.discord_bridge.overseerr_client:
+            await interaction.response.send_message(
+                f"La demande de contenu n'est pas configurée. Contacte l'équipe {BOT_NAME}.", ephemeral=True
+            )
+            return
+
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        try:
+            await self.discord_bridge.overseerr_client.request_media(
+                self.media_type, self.media_id, self.overseerr_user_id
+            )
+            await interaction.followup.send(
+                f"✅ Demande créée pour **{self.title}**. Tu recevras une notification quand elle sera disponible.",
+                ephemeral=True,
+            )
+        except Exception as e:
+            logger.exception("Failed to create media request")
+            await interaction.followup.send(
+                f"❌ Impossible de créer la demande. Contacte l'équipe {BOT_NAME}.", ephemeral=True
+            )
+
 logger = logging.getLogger(__name__)
 
 THRESHOLD_MB = int(os.getenv("MAX_ATTACHMENT_MEMORY_MB", "5"))
@@ -201,6 +234,27 @@ class DiscordBridge:
             callback=self._invite_command
         )
         self.bot.tree.add_command(invite_cmd, guild=discord.Object(id=self.guild_id))
+
+        account_cmd = app_commands.Command(
+            name="account",
+            description="Affiche les informations de ton compte Akasha",
+            callback=self._account_command
+        )
+        self.bot.tree.add_command(account_cmd, guild=discord.Object(id=self.guild_id))
+
+        request_cmd = app_commands.Command(
+            name="request",
+            description="Demande un film ou une série sur Akasha",
+            callback=self._request_command
+        )
+        self.bot.tree.add_command(request_cmd, guild=discord.Object(id=self.guild_id))
+
+        status_cmd = app_commands.Command(
+            name="status",
+            description="Affiche l'état des services Akasha",
+            callback=self._status_command
+        )
+        self.bot.tree.add_command(status_cmd, guild=discord.Object(id=self.guild_id))
 
     async def _handle_inbound_dm(self, message: discord.Message):
         try:
@@ -510,6 +564,115 @@ class DiscordBridge:
             f"\"Frappez aux portes\" tout en bas et entrez le code d'invitation suivant : {code}\n\n"
             f"Ou tu peux utiliser le lien direct : {url}"
         )
+
+    async def _account_command(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        discord_id = str(interaction.user.id)
+        user = await self.db.get_user_by_discord_id(discord_id)
+
+        if not user or not user.get("overseerr_id"):
+            await interaction.followup.send(
+                f"Ton compte n'est pas encore lié. Utilise `/link <email>` pour le lier.", ephemeral=True
+            )
+            return
+
+        embed = discord.Embed(
+            title=f"Ton compte {BOT_NAME}",
+            color=discord.Color.blue(),
+        )
+
+        if user.get("email"):
+            embed.add_field(name="Email", value=user["email"], inline=True)
+        if user.get("overseerr_username"):
+            embed.add_field(name="Utilisateur Seerr", value=user["overseerr_username"], inline=True)
+        if user.get("overseerr_plex_username"):
+            embed.add_field(name="Plex", value=user["overseerr_plex_username"], inline=True)
+
+        invite_expires = user.get("wizarr_invite_expires")
+        if invite_expires:
+            expires_dt = datetime.datetime.fromisoformat(invite_expires.replace("Z", "+00:00"))
+            embed.add_field(name="Expiration", value=expires_dt.strftime("%d/%m/%Y"), inline=True)
+        else:
+            embed.add_field(name="Expiration", value="Inconnue", inline=True)
+
+        if user.get("tracearr_trust_score") is not None:
+            embed.add_field(name="Trust score", value=str(user["tracearr_trust_score"]), inline=True)
+
+        links = []
+        if os.getenv("PLEX_URL"):
+            links.append(f"[Plex]({os.getenv('PLEX_URL')})")
+        if os.getenv("JELLYFIN_URL"):
+            links.append(f"[Jellyfin]({os.getenv('JELLYFIN_URL')})")
+        if os.getenv("OVERSEERR_BASE_URL"):
+            links.append(f"[Seerr]({os.getenv('OVERSEERR_BASE_URL')})")
+        if links:
+            embed.add_field(name="Liens utiles", value=" · ".join(links), inline=False)
+
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
+    async def _request_command(self, interaction: discord.Interaction, titre: str):
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        discord_id = str(interaction.user.id)
+        user = await self.db.get_user_by_discord_id(discord_id)
+
+        if not user or not user.get("overseerr_id"):
+            await interaction.followup.send(
+                f"Ton compte n'est pas encore lié. Utilise `/link <email>` pour demander du contenu.", ephemeral=True
+            )
+            return
+
+        if not self.overseerr_client:
+            await interaction.followup.send(
+                f"La demande de contenu n'est pas configurée. Contacte l'équipe {BOT_NAME}.", ephemeral=True
+            )
+            return
+
+        try:
+            results = await self.overseerr_client.search_media(titre, limit=5)
+            items = results.get("results", [])
+            if not items:
+                await interaction.followup.send(
+                    f"Aucun résultat trouvé pour **{titre}**.", ephemeral=True
+                )
+                return
+
+            # For now, take the first result and ask for confirmation
+            first = items[0]
+            media_type = first.get("mediaType")  # 'movie' or 'tv'
+            tmdb_id = first.get("id")
+            title = first.get("title") or first.get("name") or titre
+            year = first.get("releaseDate") or first.get("firstAirDate") or "?"
+
+            view = RequestConfirmView(self, user["overseerr_id"], media_type, tmdb_id, title)
+            embed = discord.Embed(
+                title="Demande de contenu",
+                description=f"Voulez-vous demander **{title}** ({year}) ?",
+                color=discord.Color.gold(),
+            )
+            await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+        except Exception:
+            logger.exception("Request command failed for user %s title %s", discord_id, titre)
+            await interaction.followup.send(
+                f"Une erreur s'est produite pendant la recherche. Contacte l'équipe {BOT_NAME}.", ephemeral=True
+            )
+
+    async def _status_command(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        try:
+            results = await self.health_checker.check_all()
+            formatted = self.health_checker.format_results(results)
+            all_ok = all(r.get("ok") for r in results)
+            embed = discord.Embed(
+                title=f"État des services {BOT_NAME}",
+                description=formatted,
+                color=discord.Color.green() if all_ok else discord.Color.red(),
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+        except Exception:
+            logger.exception("Status command failed")
+            await interaction.followup.send(
+                f"Impossible de vérifier l'état des services. Contacte l'équipe {BOT_NAME}.", ephemeral=True
+            )
 
     async def _get_user_data_for_inbound(self, platform_tag: str, platform_user_id: str):
         if platform_tag == "DC":
