@@ -312,6 +312,17 @@ class DiscordBridge:
         )
         self.bot.tree.add_command(export_cmd, guild=discord.Object(id=self.guild_id))
 
+        support_cmd = app_commands.Command(
+            name="support",
+            description="Ouvre un ticket support auprès de l'équipe Akasha",
+            callback=self._support_command
+        )
+        support_cmd = app_commands.describe(
+            sujet="Le sujet de ta demande",
+            description="Décris ton problème ou ta question"
+        )(support_cmd)
+        self.bot.tree.add_command(support_cmd, guild=discord.Object(id=self.guild_id))
+
     async def _handle_inbound_dm(self, message: discord.Message):
         try:
             user_id = str(message.author.id)
@@ -780,6 +791,34 @@ class DiscordBridge:
         await interaction.response.send_message(
             f"✅ Note enregistrée pour <@{membre.id}>.", ephemeral=True
         )
+
+    async def _support_command(self, interaction: discord.Interaction, sujet: str, description: str):
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        discord_id = str(interaction.user.id)
+        user = await self.db.get_user_by_discord_id(discord_id)
+
+        if not user or not user.get("overseerr_id"):
+            await interaction.followup.send(
+                f"Ton compte n'est pas lié. Utilise `/link <email>` pour le lier.", ephemeral=True
+            )
+            return
+
+        try:
+            admin = await self.bot.fetch_user(self.admin_id)
+            if admin:
+                await admin.send(
+                    f"🎫 **Ticket support de <@{discord_id}>** ({user.get('email') or 'email inconnu'})\n"
+                    f"**Sujet :** {sujet}\n"
+                    f"**Description :** {description[:1500]}"
+                )
+            await interaction.followup.send(
+                f"✅ Ticket envoyé. L'équipe {BOT_NAME} te répondra dès que possible.", ephemeral=True
+            )
+        except Exception:
+            logger.exception("Support command failed for user %s", discord_id)
+            await interaction.followup.send(
+                f"❌ Impossible d'envoyer le ticket. Contacte l'équipe {BOT_NAME} directement.", ephemeral=True
+            )
 
     async def _export_command(self, interaction: discord.Interaction):
         if interaction.user.id != self.admin_id:
