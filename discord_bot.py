@@ -26,6 +26,7 @@ from integrations.admin_dashboard import AdminDashboard
 from integrations.expiration_alerts import ExpirationAlerts
 from integrations.sync_service import SyncService
 from integrations.invitation_manager import InvitationManager
+from integrations.invitation_identity_sync import InvitationIdentitySync
 from integrations.poll_manager import PollView
 from integrations.services_monitor import ServicesMonitor
 from integrations.container_services import ContainerServicesMonitor
@@ -141,6 +142,7 @@ class DiscordBridge:
         self.expiration_alerts = ExpirationAlerts(self, db, guild_id, admin_id)
         self.sync_service = SyncService(self, overseerr_client, db)
         self.invitation_manager = InvitationManager(wizarr_client, db)
+        self.invitation_identity_sync = InvitationIdentitySync(self)
         self.services_monitor = ServicesMonitor()
         self.container_services = ContainerServicesMonitor(self)
         self.problem_reports = ProblemReportFlow(self, db, overseerr_client)
@@ -181,6 +183,8 @@ class DiscordBridge:
                     await self.account_dashboard.ensure_channel(guild)
                     await self.problem_reports.ensure_admin_channel(guild)
                     self.container_services.start()
+                    self.invitation_identity_sync.start()
+                    self.expiration_alerts.start()
                     plex_count = await self.problem_reports.sync_plex_reports(guild)
                     seerr_count = await self.problem_reports.sync_seerr_issues(guild)
                     if plex_count + seerr_count:
@@ -555,19 +559,14 @@ class DiscordBridge:
             existing_discord_ids = await self.overseerr_client.get_user_discord_ids(overseerr_id)
             existing_ids_str = [str(d) for d in existing_discord_ids]
 
-            if requester_discord_id in existing_ids_str:
-                await interaction.followup.send(
-                    "Ton compte Discord est déjà lié à ce compte Overseerr.", ephemeral=True
-                )
-                return
-
-            if existing_discord_ids:
+            if existing_discord_ids and requester_discord_id not in existing_ids_str:
                 await interaction.followup.send(
                     "Ce compte email est déjà lié à un autre compte Discord.", ephemeral=True
                 )
                 return
 
-            await self.overseerr_client.update_user_discord_id(overseerr_id, requester_discord_id)
+            if requester_discord_id not in existing_ids_str:
+                await self.overseerr_client.update_user_discord_id(overseerr_id, requester_discord_id)
 
             # Sync Wizarr invitation info
             wizarr_invite_code = None
@@ -685,6 +684,11 @@ class DiscordBridge:
                 result = await self.wizarr_client.extend_user_expiry(existing_user["id"], duration_days)
                 expires = result.get("new_expiry")
                 await self._store_extended_expiry(platform, platform_user_id, expires, duration_days)
+                if platform == "DC":
+                    guild = self.bot.get_guild(self.guild_id)
+                    member = guild.get_member(int(platform_user_id)) if guild else None
+                    if member:
+                        await self.onboarding.apply_access(member, await self.db.get_user_by_discord_id(platform_user_id))
                 handler = self.platform_handlers.get(platform)
                 if handler:
                     await handler.send(platform_user_id, self._build_extension_message(duration_days, expires))
@@ -1436,6 +1440,29 @@ class DiscordBridge:
                 f"❌ Une erreur s'est produite pendant la synchronisation. Contacte l'équipe {BOT_NAME}.", ephemeral=True
             )
 
+    async def link_inbox_invitation_identity(self, grant: dict, email: str, invitation: dict | None = None):
+        platform = grant["platform"]
+        platform_user_id = grant["platform_user_id"]
+        await self.db.mark_inbox_invitation_used(grant["code"], email)
+        await self.db.link_external_identity(platform, platform_user_id, email, grant["channel_id"])
+        if platform != "DC":
+            return
+        user = await self.db.get_user_by_discord_id(platform_user_id)
+        if not user:
+            return
+        expires = (invitation or {}).get("expires") or user.get("wizarr_invite_expires")
+        await self.db.update_user(
+            platform_user_id,
+            wizarr_invite_code=grant["code"],
+            wizarr_invite_expires=expires,
+            access_type=grant["access_type"],
+            updated_at=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        )
+        guild = self.bot.get_guild(self.guild_id)
+        member = guild.get_member(int(platform_user_id)) if guild else None
+        if member:
+            await self.onboarding.apply_access(member, await self.db.get_user_by_discord_id(platform_user_id))
+
     async def _sync_inbox_invitation_identity(self, platform_tag: str, platform_user_id: str):
         if not self.wizarr_client:
             return None
@@ -1443,13 +1470,13 @@ class DiscordBridge:
         if not grant:
             return None
         email = grant.get("used_email")
+        invitation = None
         if not email:
             invitation = await self.wizarr_client.get_invitation_by_code(grant["code"])
             email = (invitation or {}).get("used_by")
             if not email:
                 return None
-            await self.db.mark_inbox_invitation_used(grant["code"], email)
-        await self.db.link_external_identity(platform_tag, platform_user_id, email, grant["channel_id"])
+        await self.link_inbox_invitation_identity(grant, email, invitation)
         return email
 
     async def _get_user_data_for_inbound(self, platform_tag: str, platform_user_id: str):
@@ -1530,6 +1557,8 @@ class DiscordBridge:
         if getattr(self, "_external_reports_task", None):
             self._external_reports_task.cancel()
         await self.services_monitor.close()
+        await self.container_services.close()
+        await self.invitation_identity_sync.close()
         await self.bot.close()
 
     async def _run_external_report_sync(self):

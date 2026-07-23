@@ -256,6 +256,10 @@ class Database:
             row = await cursor.fetchone()
             return dict(row) if row else None
 
+    async def get_pending_inbox_invitations(self):
+        async with self.conn.execute("SELECT * FROM inbox_invitations WHERE used_email IS NULL ORDER BY created_at ASC") as cursor:
+            return [dict(row) for row in await cursor.fetchall()]
+
     async def mark_inbox_invitation_used(self, code: str, email: str):
         now = datetime.datetime.now(datetime.timezone.utc).isoformat()
         await self.conn.execute("UPDATE inbox_invitations SET used_email = ?, used_at = ? WHERE code = ?", (email.lower().strip(), now, code))

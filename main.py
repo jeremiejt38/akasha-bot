@@ -31,6 +31,21 @@ def _configure_logging():
 DEBUG = _configure_logging()
 logger = logging.getLogger(__name__)
 
+
+def _log_configuration_warnings():
+    paired_settings = (
+        ("OVERSEERR_BASE_URL", "OVERSEERR_API_KEY"),
+        ("WIZARR_BASE_URL", "WIZARR_API_KEY"),
+        ("TAUTULLI_BASE_URL", "TAUTULLI_API_KEY"),
+        ("TRACEARR_BASE_URL", "TRACEARR_API_KEY"),
+    )
+    for url_setting, key_setting in paired_settings:
+        if bool(os.getenv(url_setting)) != bool(os.getenv(key_setting)):
+            logger.warning("Integration configuration is incomplete: %s and %s must be set together", url_setting, key_setting)
+    if not os.getenv("BRIDGE_API_TOKEN"):
+        logger.warning("BRIDGE_API_TOKEN is not configured; authenticated webhook endpoints accept unauthenticated requests")
+
+
 async def _start_platform(platform_obj, name: str):
     try:
         await platform_obj.start()
@@ -48,6 +63,7 @@ async def main():
 
     if DEBUG:
         logger.debug("Debug mode enabled")
+    _log_configuration_warnings()
 
     db = Database(os.getenv("DATABASE_PATH", "./data/bot.db"))
     await db.connect()
