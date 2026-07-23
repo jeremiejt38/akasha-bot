@@ -139,6 +139,7 @@ Available slash commands for members:
 - **`/sync [@membre]`** — Synchronizes one subscriber or all subscribers with Overseerr: updates Discord ID, username, Plex username and (re)assigns the member role (admin only).
 - **`/export`** — Exports the subscriber list as a CSV file (admin only). Includes Discord ID, username, email, Plex username, signup date, expiration, accumulated months, trust score, admin notes and renewal status.
 - **`/invitations [statut]`** — Lists Wizarr invitations filtered by status (`all`, `unused`, `used`, `expired`) and lets you revoke them with a button (admin only).
+- **`/logs [limite]`** — Shows recent audited actions: invitations, renewals, syncs, notes, role revocations, etc. (admin only).
 
 ## Discord community onboarding
 
