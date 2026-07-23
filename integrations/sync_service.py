@@ -1,7 +1,7 @@
 """User synchronization service between Discord, local DB and Overseerr."""
 import datetime
 import logging
-from integrations.onboarding import assign_member_role, OnboardingConfig
+from integrations.onboarding import OnboardingConfig
 
 logger = logging.getLogger(__name__)
 
@@ -69,8 +69,6 @@ class SyncService:
             email = overseerr_user.get("email", "").lower().strip() if not email else email
 
             now = datetime.datetime.utcnow().isoformat()
-            created_at = user.get("created_at") if user else now
-            months_subscribed = user.get("months_subscribed") if user else 0
 
             # Ensure Discord ID is synced to Overseerr
             try:
@@ -78,20 +76,27 @@ class SyncService:
             except Exception:
                 logger.exception("Failed to update Discord ID in Overseerr for %s", discord_id)
 
-            await self.db.set_user(
-                discord_id=discord_id,
-                email=email,
-                discord_username=member.name,
-                overseerr_id=overseerr_id,
-                overseerr_username=overseerr_user.get("username") or overseerr_user.get("displayName"),
-                overseerr_plex_username=plex_username,
-                overseerr_discord_ids=discord_id,
-                created_at=created_at,
-                months_subscribed=months_subscribed,
-                updated_at=now,
-            )
+            user_fields = {
+                "email": email,
+                "discord_username": member.name,
+                "overseerr_id": overseerr_id,
+                "overseerr_username": overseerr_user.get("username") or overseerr_user.get("displayName"),
+                "overseerr_plex_username": plex_username,
+                "overseerr_discord_ids": discord_id,
+                "updated_at": now,
+            }
+            if user:
+                await self.db.update_user(discord_id, **user_fields)
+            else:
+                await self.db.set_user(
+                    discord_id=discord_id,
+                    created_at=now,
+                    access_type="subscriber",
+                    **user_fields,
+                )
 
-            role_assigned = await assign_member_role(member, self.onboarding_config)
+            current_user = await self.db.get_user_by_discord_id(discord_id)
+            role_assigned = await self.discord_bridge.onboarding.apply_access(member, current_user)
             return {"ok": True, "role_assigned": role_assigned}
         except Exception:
             logger.exception("Failed to sync user %s", discord_id)
@@ -99,18 +104,7 @@ class SyncService:
 
     async def _find_user_by_discord_id(self, discord_id: str):
         try:
-            page = 1
-            while True:
-                data = await self.overseerr_client.get_users(page=page, limit=100)
-                for user in data.get("results", []):
-                    settings = await self.overseerr_client.get_user_settings(user.get("id"))
-                    discord_ids = [str(d) for d in (settings.get("discordIds") or [])]
-                    if discord_id in discord_ids:
-                        return user
-                page_info = data.get("pageInfo", {})
-                if page >= page_info.get("pages", 1):
-                    break
-                page += 1
+            return await self.overseerr_client.find_user_by_discord_id(discord_id)
         except Exception:
             logger.exception("Failed to search Overseerr by Discord ID %s", discord_id)
         return None

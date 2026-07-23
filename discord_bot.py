@@ -164,6 +164,14 @@ class DiscordBridge:
                 self.onboarding.register_persistent_views(self.bot)
             except Exception:
                 logger.exception("Failed to register persistent onboarding views")
+            try:
+                guild = self.bot.get_guild(self.guild_id)
+                if guild:
+                    await self.onboarding.ensure_verification_channel(guild)
+                else:
+                    logger.warning("Guild %s not available to create verification channel", self.guild_id)
+            except Exception:
+                logger.exception("Failed to create or configure verification channel")
             self._ready_event.set()
 
         @self.bot.event
@@ -232,7 +240,12 @@ class DiscordBridge:
         async def on_member_join(member: discord.Member):
             if member.guild.id != self.guild_id or member.bot:
                 return
-            await self.onboarding.start(member)
+            try:
+                completed_onboarding = member.flags.completed_onboarding if member.flags else False
+            except AttributeError:
+                completed_onboarding = True
+            if completed_onboarding:
+                await self.onboarding.start(member)
 
         @self.bot.event
         async def on_member_update(before: discord.Member, after: discord.Member):
@@ -243,6 +256,7 @@ class DiscordBridge:
                 after_completed = after.flags.completed_onboarding if after.flags else False
             except AttributeError:
                 return
+            await self.onboarding.capture_onboarding_answers(after)
             if not before_completed and after_completed:
                 await self.onboarding.start(after)
 
@@ -252,13 +266,6 @@ class DiscordBridge:
             callback=self._whatsapp_command
         )
         self.bot.tree.add_command(whatsapp_cmd, guild=discord.Object(id=self.guild_id))
-
-        link_cmd = app_commands.Command(
-            name="link",
-            description="Lie ton compte Discord à ton compte Overseerr avec ton email",
-            callback=self._link_command
-        )
-        self.bot.tree.add_command(link_cmd, guild=discord.Object(id=self.guild_id))
 
         invite_cmd = app_commands.Command(
             name="invite",
@@ -645,17 +652,29 @@ class DiscordBridge:
                 return
             await handler.send(platform_user_id, message)
 
-            # Store the invitation for Discord users so stacking works next time
+            # Store the invitation for Discord users so stacking and role assignment survive restarts.
             if platform == "DC":
-                user = await self.db.get_user_by_discord_id(platform_user_id)
+                user = await self.db.get_user_by_discord_id(platform_user_id) or {}
                 months = (user.get("months_subscribed") or 0) + max(1, int(duration_days / 30))
+                access_type = "trial" if is_trial else "subscriber"
+                await self.db.record_access_grant(
+                    platform_user_id,
+                    code,
+                    invite.get("expires"),
+                    access_type,
+                )
                 await self.db.update_user(
                     platform_user_id,
-                    wizarr_invite_code=code,
-                    wizarr_invite_expires=invite.get("expires"),
                     months_subscribed=months,
                     updated_at=datetime.datetime.utcnow().isoformat(),
                 )
+                guild = self.bot.get_guild(self.guild_id)
+                member = guild.get_member(int(platform_user_id)) if guild else None
+                if member:
+                    await self.onboarding.apply_access(
+                        member,
+                        await self.db.get_user_by_discord_id(platform_user_id),
+                    )
 
             await interaction.followup.send(
                 f"Invitation `{code}` créée ({duration_days} jours) et envoyée à {platform}.", ephemeral=True

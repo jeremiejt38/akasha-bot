@@ -141,13 +141,15 @@ class ExpirationAlerts:
             member_id = int(discord_id)
             if expired:
                 text = (
-                    "Ton abonnement Akasha a expiré. "
-                    "Contacte l'admin sur Discord pour renouveler ton accès."
+                    "Ton accès Akasha a expiré. Pour le réactiver, contacte "
+                    "<@1521192140494078123> en message privé, Telegram @akasha_stream_bot "
+                    "ou WhatsApp @akasha.ing."
                 )
             else:
                 text = (
-                    f"Ton abonnement Akasha expire dans {days} jours. "
-                    "Contacte l'admin sur Discord si tu souhaites le renouveler."
+                    f"Ton accès Akasha expire dans {days} jours. "
+                    "Contacte <@1521192140494078123> en message privé, Telegram @akasha_stream_bot "
+                    "ou WhatsApp @akasha.ing si tu souhaites le renouveler."
                 )
             user_obj = await self.discord_bridge.bot.fetch_user(member_id)
             if user_obj:
@@ -162,11 +164,6 @@ class ExpirationAlerts:
             guild = self.discord_bridge.bot.get_guild(self.guild_id)
             if guild is None:
                 guild = await self.discord_bridge.bot.fetch_guild(self.guild_id)
-            role = discord.utils.get(guild.roles, name=MEMBER_ROLE_NAME)
-            if role is None:
-                logger.warning("Member role %s not found for revocation", MEMBER_ROLE_NAME)
-                return
-
             discord_id = user.get("discord_id")
             if not discord_id:
                 return
@@ -176,13 +173,12 @@ class ExpirationAlerts:
                     member = await guild.fetch_member(int(discord_id))
                 except Exception:
                     return
-            if role in member.roles:
-                await member.remove_roles(role, reason="Abonnement expiré")
-                logger.info("Revoked member role for user %s", discord_id)
+            if await self.discord_bridge.onboarding.apply_access(member, user):
+                logger.info("Applied expired access role for user %s", discord_id)
                 await self.db.log_audit(
-                    action="role_revoked",
+                    action="access_expired",
                     discord_id=discord_id,
-                    details="Abonnement expiré",
+                    details="Accès expiré",
                 )
         except Exception:
             logger.exception("Failed to revoke role for user %s", user.get("discord_id"))

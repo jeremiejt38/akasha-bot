@@ -44,7 +44,11 @@ class OverseerrClient:
         return await self._request("GET", "/status")
 
     async def get_users(self, page: int = 1, limit: int = 10):
-        return await self._request("GET", "/user", params={"page": page, "limit": limit})
+        return await self._request(
+            "GET",
+            "/user",
+            params={"take": limit, "skip": max(0, page - 1) * limit},
+        )
 
     async def get_user(self, user_id: int):
         return await self._request("GET", f"/user/{user_id}")
@@ -54,13 +58,31 @@ class OverseerrClient:
 
     async def get_user_discord_ids(self, user_id: int):
         settings = await self.get_user_settings(user_id)
-        return settings.get("discordIds") or []
+        discord_ids = settings.get("discordIds") or []
+        singular_discord_id = settings.get("discordId")
+        if singular_discord_id is not None and str(singular_discord_id) not in {str(value) for value in discord_ids}:
+            discord_ids.append(singular_discord_id)
+        return discord_ids
+
+    async def find_user_by_discord_id(self, discord_id: str):
+        page = 1
+        while True:
+            data = await self.get_users(page=page, limit=20)
+            for user in data.get("results", []):
+                discord_ids = await self.get_user_discord_ids(user.get("id"))
+                if str(discord_id) in {str(value) for value in discord_ids}:
+                    return user
+            page_info = data.get("pageInfo", {})
+            if page >= page_info.get("pages", 1):
+                break
+            page += 1
+        return None
 
     async def find_user_by_email(self, email: str):
         email = email.lower().strip()
         page = 1
         while True:
-            data = await self.get_users(page=page, limit=100)
+            data = await self.get_users(page=page, limit=20)
             for user in data.get("results", []):
                 if (user.get("email") or "").lower().strip() == email:
                     return user

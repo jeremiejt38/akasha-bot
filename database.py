@@ -4,6 +4,7 @@ Provides async methods to get/set mappings between platform user IDs and Discord
 """
 import os
 import logging
+import datetime
 import aiosqlite
 
 logger = logging.getLogger(__name__)
@@ -19,6 +20,7 @@ class Database:
 
     async def connect(self):
         self.conn = await aiosqlite.connect(self.path)
+        self.conn.row_factory = aiosqlite.Row
         await self._init_schema()
         logger.debug("Database connected: %s", self.path)
 
@@ -58,6 +60,8 @@ class Database:
                 tracearr_session_count INTEGER,
                 tracearr_last_activity TEXT,
                 tracearr_stats TEXT,
+                access_type TEXT DEFAULT 'subscriber',
+                onboarding_answers TEXT,
                 updated_at TEXT
             )
             """
@@ -74,7 +78,16 @@ class Database:
             )
             """
         )
+        await self._ensure_user_column("access_type", "TEXT DEFAULT 'subscriber'")
+        await self._ensure_user_column("onboarding_answers", "TEXT")
+        await self.conn.execute("UPDATE users SET access_type = 'subscriber' WHERE access_type IS NULL")
         await self.conn.commit()
+
+    async def _ensure_user_column(self, name: str, definition: str):
+        async with self.conn.execute("PRAGMA table_info(users)") as cursor:
+            columns = {row[1] for row in await cursor.fetchall()}
+        if name not in columns:
+            await self.conn.execute(f"ALTER TABLE users ADD COLUMN {name} {definition}")
 
     async def get_mapping(self, platform: str, platform_user_id: str):
         async with self.conn.execute(
@@ -122,7 +135,7 @@ class Database:
             "wizarr_invite_code", "wizarr_invite_expires", "created_at", "months_subscribed",
             "admin_notes", "renewal_requested_at", "renewal_status", "tracearr_user_id", "tracearr_username", "tracearr_trust_score",
             "tracearr_total_violations", "tracearr_session_count", "tracearr_last_activity",
-            "tracearr_stats", "updated_at",
+            "tracearr_stats", "access_type", "onboarding_answers", "updated_at",
         ]
         values = {k: fields.get(k) for k in columns}
         keys = list(values.keys())
@@ -153,6 +166,36 @@ class Database:
             rows = await cursor.fetchall()
             return [dict(row) for row in rows]
 
+    async def record_access_grant(self, discord_id: str, code: str, expires: str | None, access_type: str):
+        now = datetime.datetime.utcnow().isoformat()
+        await self.conn.execute(
+            """
+            INSERT INTO users (discord_id, wizarr_invite_code, wizarr_invite_expires, access_type, updated_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(discord_id) DO UPDATE SET
+                wizarr_invite_code = excluded.wizarr_invite_code,
+                wizarr_invite_expires = excluded.wizarr_invite_expires,
+                access_type = excluded.access_type,
+                updated_at = excluded.updated_at
+            """,
+            (discord_id, code, expires, access_type, now),
+        )
+        await self.conn.commit()
+
+    async def record_onboarding_answers(self, discord_id: str, answers: str):
+        now = datetime.datetime.utcnow().isoformat()
+        await self.conn.execute(
+            """
+            INSERT INTO users (discord_id, onboarding_answers, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(discord_id) DO UPDATE SET
+                onboarding_answers = excluded.onboarding_answers,
+                updated_at = excluded.updated_at
+            """,
+            (discord_id, answers, now),
+        )
+        await self.conn.commit()
+
     async def update_user(self, discord_id: str, **fields):
         allowed = {
             "email", "discord_username", "overseerr_id", "overseerr_username",
@@ -160,7 +203,7 @@ class Database:
             "wizarr_invite_expires", "created_at", "months_subscribed", "admin_notes",
             "renewal_requested_at", "renewal_status", "tracearr_user_id",
             "tracearr_username", "tracearr_trust_score", "tracearr_total_violations",
-            "tracearr_session_count", "tracearr_last_activity", "tracearr_stats", "updated_at",
+            "tracearr_session_count", "tracearr_last_activity", "tracearr_stats", "access_type", "onboarding_answers", "updated_at",
         }
         updates = {k: v for k, v in fields.items() if k in allowed}
         if not updates:

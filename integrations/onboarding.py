@@ -8,6 +8,7 @@ Handles:
 - Sending a final confirmation DM with support info.
 """
 import os
+import json
 import datetime
 import logging
 import discord
@@ -26,6 +27,14 @@ class OnboardingConfig:
         self.plex_url = os.getenv("PLEX_URL", "https://p.akasha.ing")
         self.jellyfin_url = os.getenv("JELLYFIN_URL", "https://j.akasha.ing")
         self.support_dm_enabled = os.getenv("SUPPORT_DM_ENABLED", "true").lower() in ("1", "true", "yes")
+        self.verification_role_name = os.getenv("VERIFICATION_ROLE_NAME", "À vérifier")
+        self.verification_channel_name = os.getenv("VERIFICATION_CHANNEL_NAME", "verification")
+        self.trial_role_name = os.getenv("TRIAL_ROLE_NAME", "Essai")
+        self.expired_role_name = os.getenv("EXPIRED_ROLE_NAME", "Expiré")
+        self.expiration_channel_name = os.getenv("EXPIRATION_CHANNEL_NAME", "abonnement-expire")
+        self.answer_role_names = tuple(
+            name.strip() for name in os.getenv("ONBOARDING_ANSWER_ROLE_NAMES", "Q1,Q2,Q3").split(",") if name.strip()
+        )
 
 
 async def ensure_member_role(guild: discord.Guild, config: OnboardingConfig) -> discord.Role | None:
@@ -65,6 +74,119 @@ async def assign_member_role(member: discord.Member, config: OnboardingConfig) -
         return False
 
 
+async def ensure_verification_role(guild: discord.Guild, config: OnboardingConfig) -> discord.Role | None:
+    role = discord.utils.get(guild.roles, name=config.verification_role_name)
+    if role:
+        return role
+    try:
+        role = await guild.create_role(
+            name=config.verification_role_name,
+            color=discord.Color.light_grey(),
+            reason=f"Auto-created by {BOT_NAME} onboarding bot",
+        )
+        logger.info("Created verification role %s (%s)", role.id, role.name)
+        return role
+    except Exception:
+        logger.exception("Failed to create verification role %r", config.verification_role_name)
+        return None
+
+
+async def assign_verification_role(member: discord.Member, config: OnboardingConfig) -> bool:
+    try:
+        role = await ensure_verification_role(member.guild, config)
+        if not role:
+            return False
+        if role in member.roles:
+            return True
+        await member.add_roles(role, reason=f"{BOT_NAME} account verification required")
+        logger.info("Assigned verification role %s to user %s", role.name, member.id)
+        return True
+    except Exception:
+        logger.exception("Failed to assign verification role to user %s", member.id)
+        return False
+
+
+async def remove_verification_role(member: discord.Member, config: OnboardingConfig) -> bool:
+    role = discord.utils.get(member.guild.roles, name=config.verification_role_name)
+    if not role or role not in member.roles:
+        return True
+    try:
+        await member.remove_roles(role, reason=f"{BOT_NAME} account verification completed")
+        logger.info("Removed verification role %s from user %s", role.name, member.id)
+        return True
+    except Exception:
+        logger.exception("Failed to remove verification role from user %s", member.id)
+        return False
+
+
+async def ensure_named_role(guild: discord.Guild, name: str, color: discord.Color) -> discord.Role | None:
+    role = discord.utils.get(guild.roles, name=name)
+    if role:
+        return role
+    try:
+        role = await guild.create_role(
+            name=name,
+            color=color,
+            hoist=False,
+            mentionable=False,
+            reason=f"Auto-created by {BOT_NAME} access management",
+        )
+        logger.info("Created managed role %s (%s)", role.id, role.name)
+        return role
+    except Exception:
+        logger.exception("Failed to create managed role %r", name)
+        return None
+
+
+async def ensure_access_roles(guild: discord.Guild, config: OnboardingConfig) -> dict[str, discord.Role]:
+    roles = {}
+    for key, name, color in (
+        ("subscriber", config.member_role_name, discord.Color.gold()),
+        ("trial", config.trial_role_name, discord.Color.blurple()),
+        ("expired", config.expired_role_name, discord.Color.dark_grey()),
+    ):
+        role = await ensure_named_role(guild, name, color)
+        if role:
+            roles[key] = role
+    for name in config.answer_role_names:
+        await ensure_named_role(guild, name, discord.Color.default())
+    return roles
+
+
+async def remove_onboarding_answer_roles(member: discord.Member, config: OnboardingConfig) -> bool:
+    roles = [role for role in member.roles if role.name in config.answer_role_names]
+    if not roles:
+        return True
+    try:
+        await member.remove_roles(*roles, reason=f"{BOT_NAME} onboarding completed")
+        logger.info("Removed temporary onboarding roles from user %s", member.id)
+        return True
+    except Exception:
+        logger.exception("Failed to remove temporary onboarding roles from user %s", member.id)
+        return False
+
+
+async def assign_access_role(member: discord.Member, config: OnboardingConfig, access_type: str = "subscriber", expired: bool = False) -> bool:
+    try:
+        roles = await ensure_access_roles(member.guild, config)
+        target_key = "expired" if expired else "trial" if access_type == "trial" else "subscriber"
+        target = roles.get(target_key)
+        if not target:
+            return False
+        managed = [role for role in roles.values() if role in member.roles and role != target]
+        if managed:
+            await member.remove_roles(*managed, reason=f"{BOT_NAME} access role updated")
+        if target not in member.roles:
+            await member.add_roles(target, reason=f"{BOT_NAME} access role updated")
+        await remove_verification_role(member, config)
+        await remove_onboarding_answer_roles(member, config)
+        logger.info("Assigned %s access role to user %s", target.name, member.id)
+        return True
+    except Exception:
+        logger.exception("Failed to assign access role to user %s", member.id)
+        return False
+
+
 class LinkEmailModal(ui.Modal, title=f"Lier mon compte Seerr - {BOT_NAME}"):
     email = ui.TextInput(
         label="Email",
@@ -80,7 +202,7 @@ class LinkEmailModal(ui.Modal, title=f"Lier mon compte Seerr - {BOT_NAME}"):
 
     async def on_submit(self, interaction: discord.Interaction):
         email = str(self.email).lower().strip()
-        logger.info("Link modal submitted by user %s for email %s", self.member.id, email)
+        logger.info("Link modal submitted by user %s", self.member.id)
         await interaction.response.defer(ephemeral=True, thinking=True)
         success = await self.flow.process_email_link(self.member, email, interaction)
         if not success:
@@ -158,6 +280,22 @@ async def _handle_link_click(flow, interaction: discord.Interaction):
         await interaction.response.send_message("Ce bouton est réservé aux humains.", ephemeral=True)
         return
 
+    existing = await flow.db.get_user_by_discord_id(str(member.id))
+    if existing and existing.get("overseerr_id"):
+        await flow.apply_access(member, existing)
+        await interaction.response.send_message("Ton compte est déjà lié. Tes accès membre sont actifs.", ephemeral=True)
+        return
+
+    if flow.overseerr_client:
+        try:
+            overseerr_user = await flow.overseerr_client.find_user_by_discord_id(str(member.id))
+            if overseerr_user:
+                await flow._link_overseerr_user(member, overseerr_user)
+                await interaction.response.send_message("Ton compte est déjà lié. Tes accès membre sont actifs.", ephemeral=True)
+                return
+        except Exception:
+            logger.exception("Failed to look up linked Seerr account for user %s", member.id)
+
     await interaction.response.send_modal(LinkEmailModal(flow, member))
 
 
@@ -172,6 +310,120 @@ class OnboardingFlow:
     def register_persistent_views(self, bot):
         bot.add_view(PersistentOnboardingView(self))
         logger.info("Registered persistent onboarding view")
+
+    async def ensure_expiration_channel(self, guild: discord.Guild):
+        roles = await ensure_access_roles(guild, self.config)
+        expired_role = roles.get("expired")
+        if not expired_role:
+            return None
+        overwrites = {
+            guild.default_role: discord.PermissionOverwrite(view_channel=False),
+            expired_role: discord.PermissionOverwrite(view_channel=True, read_message_history=True, send_messages=False),
+        }
+        channel = discord.utils.get(guild.text_channels, name=self.config.expiration_channel_name)
+        try:
+            if channel is None:
+                channel = await guild.create_text_channel(
+                    self.config.expiration_channel_name,
+                    overwrites=overwrites,
+                    reason=f"Auto-created by {BOT_NAME} access management",
+                )
+                logger.info("Created expiration channel %s (%s)", channel.id, channel.name)
+            else:
+                await channel.edit(overwrites=overwrites, reason=f"Managed by {BOT_NAME} access management")
+
+            found_message = False
+            async for message in channel.history(limit=50):
+                if message.author.id == self.discord_bridge.bot.user.id and message.embeds:
+                    if message.embeds[0].title == f"Accès expiré — {BOT_NAME}":
+                        found_message = True
+                        break
+            if not found_message:
+                embed = discord.Embed(
+                    title=f"Accès expiré — {BOT_NAME}",
+                    description=(
+                        "Ton accès est arrivé à expiration. Pour le réactiver, contacte "
+                        "<@1521192140494078123> en message privé, Telegram `@akasha_stream_bot` "
+                        "ou WhatsApp `@akasha.ing`."
+                    ),
+                    color=discord.Color.dark_grey(),
+                )
+                await channel.send(embed=embed)
+            return channel
+        except Exception:
+            logger.exception("Failed to create or configure expiration channel")
+            return None
+
+    async def ensure_verification_channel(self, guild: discord.Guild):
+        if not self.config.enabled:
+            return None
+        await ensure_access_roles(guild, self.config)
+        await self.ensure_expiration_channel(guild)
+        role = await ensure_verification_role(guild, self.config)
+        if not role:
+            return None
+        overwrites = {
+            guild.default_role: discord.PermissionOverwrite(view_channel=False),
+            role: discord.PermissionOverwrite(view_channel=True, read_message_history=True, send_messages=False),
+        }
+        channel = discord.utils.get(guild.text_channels, name=self.config.verification_channel_name)
+        try:
+            if channel is None:
+                channel = await guild.create_text_channel(
+                    self.config.verification_channel_name,
+                    overwrites=overwrites,
+                    reason=f"Auto-created by {BOT_NAME} onboarding bot",
+                )
+                logger.info("Created verification channel %s (%s)", channel.id, channel.name)
+            else:
+                await channel.edit(overwrites=overwrites, reason=f"Managed by {BOT_NAME} onboarding bot")
+
+            found_message = False
+            async for message in channel.history(limit=50):
+                if message.author.id == self.discord_bridge.bot.user.id and message.embeds:
+                    if message.embeds[0].title == f"Vérifie ton compte {BOT_NAME}":
+                        found_message = True
+                        break
+            if not found_message:
+                embed = discord.Embed(
+                    title=f"Vérifie ton compte {BOT_NAME}",
+                    description=(
+                        "Pour accéder aux salons réservés aux membres, lie ton compte Seerr à Discord. "
+                        "Clique sur le bouton ci-dessous : ton adresse e-mail reste privée."
+                    ),
+                    color=discord.Color.blue(),
+                )
+                await channel.send(embed=embed, view=PersistentOnboardingView(self))
+            return channel
+        except Exception:
+            logger.exception("Failed to create or configure verification channel")
+            return None
+
+    async def capture_onboarding_answers(self, member: discord.Member):
+        answers = sorted(role.name for role in member.roles if role.name in self.config.answer_role_names)
+        if answers:
+            await self.db.record_onboarding_answers(str(member.id), json.dumps(answers))
+            logger.info("Recorded onboarding answers for user %s", member.id)
+
+    @staticmethod
+    def _is_expired(user_data: dict | None) -> bool:
+        expires = (user_data or {}).get("wizarr_invite_expires")
+        if not expires:
+            return False
+        try:
+            expires_at = datetime.datetime.fromisoformat(expires.replace("Z", "+00:00"))
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=datetime.timezone.utc)
+            return expires_at <= datetime.datetime.now(datetime.timezone.utc)
+        except (TypeError, ValueError):
+            return False
+
+    async def apply_access(self, member: discord.Member, user_data: dict | None):
+        access_type = (user_data or {}).get("access_type") or "subscriber"
+        expired = self._is_expired(user_data)
+        if expired:
+            await self.ensure_expiration_channel(member.guild)
+        return await assign_access_role(member, self.config, access_type, expired)
 
     def is_pending(self, member_id: int) -> bool:
         return member_id in self._pending
@@ -209,26 +461,19 @@ class OnboardingFlow:
             self._pending.discard(member.id)
             return
 
-        # Check Overseerr by Discord ID
+        # Check Seerr by Discord ID
         if self.overseerr_client:
             try:
-                # Look through Overseerr users for a matching discord id in notification settings
-                page = 1
-                while True:
-                    data = await self.overseerr_client.get_users(page=page, limit=100)
-                    for user in data.get("results", []):
-                        settings = await self.overseerr_client.get_user_settings(user.get("id"))
-                        discord_ids = [str(d) for d in (settings.get("discordIds") or [])]
-                        if str(member.id) in discord_ids:
-                            await self._link_overseerr_user(member, user)
-                            self._pending.discard(member.id)
-                            return
-                    page_info = data.get("pageInfo", {})
-                    if page >= page_info.get("pages", 1):
-                        break
-                    page += 1
+                overseerr_user = await self.overseerr_client.find_user_by_discord_id(str(member.id))
+                if overseerr_user:
+                    await self._link_overseerr_user(member, overseerr_user)
+                    self._pending.discard(member.id)
+                    return
             except Exception:
-                logger.exception("Failed to search Overseerr by Discord ID for user %s", member.id)
+                logger.exception("Failed to search Seerr by Discord ID for user %s", member.id)
+
+        await self.ensure_verification_channel(member.guild)
+        await assign_verification_role(member, self.config)
 
         # Send welcome DM with link button
         embed = discord.Embed(
@@ -254,7 +499,7 @@ class OnboardingFlow:
         try:
             overseerr_user = await self.overseerr_client.find_user_by_email(email)
             if not overseerr_user:
-                logger.info("Email %s not found in Overseerr for user %s", email, member.id)
+                logger.info("No Overseerr account found for user %s", member.id)
                 return False
 
             await self._link_overseerr_user(member, overseerr_user, email=email)
@@ -282,27 +527,46 @@ class OnboardingFlow:
             logger.exception("Failed to update Discord ID in Overseerr for user %s", member.id)
 
         now = datetime.datetime.utcnow().isoformat()
-        await self.db.set_user(
-            discord_id=str(member.id),
-            email=email,
-            discord_username=member.name,
-            overseerr_id=overseerr_id,
-            overseerr_username=overseerr_user.get("username") or overseerr_user.get("displayName"),
-            overseerr_plex_username=plex_username,
-            overseerr_discord_ids=str(member.id),
-            created_at=now,
-            updated_at=now,
-        )
+        existing = await self.db.get_user_by_discord_id(str(member.id))
+        user_fields = {
+            "email": email,
+            "discord_username": member.name,
+            "overseerr_id": overseerr_id,
+            "overseerr_username": overseerr_user.get("username") or overseerr_user.get("displayName"),
+            "overseerr_plex_username": plex_username,
+            "overseerr_discord_ids": str(member.id),
+            "updated_at": now,
+        }
+        if existing:
+            await self.db.update_user(str(member.id), **user_fields)
+        else:
+            await self.db.set_user(
+                discord_id=str(member.id),
+                created_at=now,
+                access_type="subscriber",
+                **user_fields,
+            )
 
         await self._finish_onboarding(member, await self.db.get_user_by_discord_id(str(member.id)))
 
     async def _finish_onboarding(self, member: discord.Member, user_data: dict):
-        await assign_member_role(member, self.config)
+        await self.apply_access(member, user_data)
+        access_type = (user_data or {}).get("access_type") or "subscriber"
+        expired = self._is_expired(user_data)
 
-        lines = [
-            "Ton inscription a bien été finalisée et ton compte Discord a été lié.",
-            "Tu as maintenant accès aux salons réservés aux membres.",
-        ]
+        if expired:
+            expires = (user_data or {}).get("wizarr_invite_expires") or "date inconnue"
+            lines = [
+                "Ton accès Akasha a expiré.",
+                f"Date d'expiration : `{expires}`.",
+                "Pour le réactiver, contacte <@1521192140494078123> en message privé, Telegram `@akasha_stream_bot` ou WhatsApp `@akasha.ing`.",
+            ]
+        else:
+            role_label = "Essai" if access_type == "trial" else "Abonné"
+            lines = [
+                "Ton inscription a bien été finalisée et ton compte Discord a été lié.",
+                f"Tu as maintenant accès aux salons réservés aux {role_label}s.",
+            ]
         if user_data and user_data.get("overseerr_plex_username"):
             lines.append(f"Compte Plex lié : `{user_data['overseerr_plex_username']}`")
 

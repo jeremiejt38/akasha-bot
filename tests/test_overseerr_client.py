@@ -57,6 +57,18 @@ def test_search_media():
     assert result["results"][0]["title"] == "Test Movie"
 
 
+def test_find_user_by_singular_discord_id():
+    client = OverseerrClient(base_url="https://seerr.test", api_key="key")
+    client._session = FakeSession([
+        {"status": 200, "json": {"results": [{"id": 42}], "pageInfo": {"pages": 1}}},
+        {"status": 200, "json": {"discordId": "123456"}},
+    ])
+
+    import asyncio
+    result = asyncio.run(client.find_user_by_discord_id("123456"))
+    assert result == {"id": 42}
+
+
 def test_request_media():
     client = OverseerrClient(base_url="https://seerr.test", api_key="key")
     fake_json = {"id": 999, "status": 1}

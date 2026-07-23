@@ -1,7 +1,7 @@
 services:
   bot:
     build: .
-    container_name: multibridge-bot
+    container_name: akasha-bot
     hostname: bot
     env_file: .env
     volumes:
@@ -29,7 +29,7 @@ services:
   # WhatsApp bridge (Node + whatsapp-web.js)
   whatsapp:
     build: ./node_whatsapp
-    container_name: bridge-whatsapp
+    container_name: akasha-bridge-whatsapp
     hostname: whatsapp
     environment:
       - WA_JS_HEAP_MB=1024
