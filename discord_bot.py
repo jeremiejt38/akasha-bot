@@ -265,6 +265,13 @@ class DiscordBridge:
         )
         self.bot.tree.add_command(dashboard_cmd, guild=discord.Object(id=self.guild_id))
 
+        reload_cmd = app_commands.Command(
+            name="reload",
+            description="Recharge la configuration de l'auto-responder (admin only)",
+            callback=self._reload_command
+        )
+        self.bot.tree.add_command(reload_cmd, guild=discord.Object(id=self.guild_id))
+
     async def _handle_inbound_dm(self, message: discord.Message):
         try:
             user_id = str(message.author.id)
@@ -696,6 +703,26 @@ class DiscordBridge:
             await interaction.response.send_message("Seul l'admin peut utiliser cette commande.", ephemeral=True)
             return
         await self.admin_dashboard.send_dashboard(interaction)
+
+    async def _reload_command(self, interaction: discord.Interaction):
+        if interaction.user.id != self.admin_id:
+            await interaction.response.send_message("Seul l'admin peut utiliser cette commande.", ephemeral=True)
+            return
+        if not self.auto_responder:
+            await interaction.response.send_message(
+                "L'auto-responder n'est pas activé.", ephemeral=True
+            )
+            return
+        try:
+            self.auto_responder.reload()
+            await interaction.response.send_message(
+                "✅ Configuration de l'auto-responder rechargée.", ephemeral=True
+            )
+        except Exception:
+            logger.exception("Failed to reload auto-responder config")
+            await interaction.response.send_message(
+                "❌ Impossible de recharger l'auto-responder.", ephemeral=True
+            )
 
     async def _get_user_data_for_inbound(self, platform_tag: str, platform_user_id: str):
         if platform_tag == "DC":
