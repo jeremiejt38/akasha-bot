@@ -1529,6 +1529,9 @@ class DiscordBridge:
                 try:
                     libraries = await self.tautulli_client.get_library_statistics()
                     def library_count(*terms):
+                        for term in terms:
+                            if term in libraries:
+                                return libraries[term]
                         for name, count in libraries.items():
                             if any(term in name for term in terms):
                                 return count
