@@ -14,7 +14,7 @@ const MEDIA_TMP_DIR = process.env.WA_MEDIA_TMP_DIR || '/tmp';
 const MAX_MEDIA_BYTES = parseInt(process.env.WA_MAX_MEDIA_BYTES || '20971520', 10); // 20 MB default
 
 // Low-power / energy saving settings
-const LOW_POWER_MODE = process.env.WA_LOW_POWER !== 'false' && process.env.WA_LOW_POWER !== '0';
+const LOW_POWER_MODE = process.env.WA_LOW_POWER === 'true' || process.env.WA_LOW_POWER === '1';
 const WA_SKIP_MEDIA = process.env.WA_SKIP_MEDIA === 'true';
 const MESSAGE_PROCESS_DELAY_MS = parseInt(process.env.WA_MESSAGE_PROCESS_DELAY_MS || '0', 10);
 const JS_HEAP_MB = parseInt(process.env.WA_JS_HEAP_MB || '512', 10);
@@ -38,8 +38,6 @@ const DEFAULT_PUPPETEER_ARGS = [
   '--disable-translate',
   '--mute-audio',
   '--no-first-run',
-  '--single-process',
-  '--no-zygote',
   '--disable-features=IsolateOrigins,site-per-process,TranslateUI',
   '--window-size=1280,720'
 ];
