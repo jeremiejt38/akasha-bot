@@ -13,6 +13,7 @@ class AccountPanel(ui.View):
     async def show(self, interaction, _button):
         embed = await self.dashboard.build_embed(interaction.user.id)
         await interaction.response.send_message(embed=embed, ephemeral=True)
+        await self.dashboard.move_panel_to_bottom(interaction.channel, interaction.message)
 
     @ui.button(label="Préférences DM", style=discord.ButtonStyle.secondary, custom_id="account:preferences")
     async def preferences(self, interaction, _button):
@@ -22,6 +23,7 @@ class AccountPanel(ui.View):
             view=NotificationPreferencesView(self.dashboard, user),
             ephemeral=True,
         )
+        await self.dashboard.move_panel_to_bottom(interaction.channel, interaction.message)
 
 
 class NotificationPreferencesView(ui.View):
@@ -81,6 +83,15 @@ class AccountDashboard:
         )
         await channel.send(embed=embed, view=AccountPanel(self))
         return channel
+
+    async def move_panel_to_bottom(self, channel, panel_message):
+        await panel_message.delete()
+        embed = discord.Embed(
+            title="Mon compte Akasha",
+            description="Consulte tes informations, tes statistiques et tes préférences avec les boutons ci-dessous.",
+            color=discord.Color.blue(),
+        )
+        await channel.send(embed=embed, view=AccountPanel(self))
 
     async def build_embed(self, discord_id):
         user = await self.db.get_user_by_discord_id(str(discord_id))
