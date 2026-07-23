@@ -1,6 +1,6 @@
 # Multiplaform Bridge Inbox - Discord unified inbox bot
 
-![Version](https://img.shields.io/badge/version-0.18.0-blue)
+![Version](https://img.shields.io/badge/version-0.19.0-blue)
 
 Bot Discord Python servant de bridge de messagerie unifiée.
 
@@ -214,7 +214,12 @@ Do NOT commit real credentials. Use `.env` and a proper secrets manager for prod
 
 ## Changelog
 
-### v0.18.x ← *actuel*
+### v0.19.x ← *actuel*
+
+- **feat**: commande abonné `/renew` pour demander le renouvellement de l'abonnement
+- **feat**: notification admin et vue "Renouvellements" dans le `/dashboard`
+
+### v0.18.x
 
 - **feat**: commande admin `/sync` pour synchroniser un ou tous les abonnés avec Overseerr
 - **feat**: service `SyncService` qui met à jour les infos utilisateurs, le Discord ID et réattribue le rôle membre
