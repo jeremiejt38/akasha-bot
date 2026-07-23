@@ -122,7 +122,7 @@ class DiscordBridge:
         self.admin_dashboard = AdminDashboard(self, db, overseerr_client)
         self.expiration_alerts = ExpirationAlerts(self, db, guild_id, admin_id)
         self.sync_service = SyncService(self, overseerr_client, db)
-        self.invitation_manager = InvitationManager(wizarr_client)
+        self.invitation_manager = InvitationManager(wizarr_client, db)
         self._ready_event = asyncio.Event()
         self._closed = False
         self._bot_task = None
@@ -341,6 +341,16 @@ class DiscordBridge:
             statut="Filtrer par statut: all, unused, used, expired"
         )(invitations_cmd)
         self.bot.tree.add_command(invitations_cmd, guild=discord.Object(id=self.guild_id))
+
+        logs_cmd = app_commands.Command(
+            name="logs",
+            description="Affiche les dernières actions auditées (admin only)",
+            callback=self._logs_command
+        )
+        logs_cmd = app_commands.describe(
+            limite="Nombre d'entrées à afficher (défaut 20, max 100)"
+        )(logs_cmd)
+        self.bot.tree.add_command(logs_cmd, guild=discord.Object(id=self.guild_id))
 
     async def _handle_inbound_dm(self, message: discord.Message):
         try:
@@ -589,6 +599,16 @@ class DiscordBridge:
             await interaction.followup.send(
                 f"Invitation `{code}` créée ({duration_days} jours) et envoyée à {platform}.", ephemeral=True
             )
+
+            try:
+                await self.db.log_audit(
+                    action="invite_created",
+                    admin_id=str(interaction.user.id),
+                    discord_id=platform_user_id if platform == "DC" else None,
+                    details=f"code={code}, duration={duration_days}, platform={platform}",
+                )
+            except Exception:
+                logger.exception("Failed to log invite creation")
         except Exception:
             logger.exception("Invite command failed in channel %s", channel.id)
             await interaction.followup.send(f"Une erreur s'est produite en créant l'invitation. Contacte l'équipe {BOT_NAME}.", ephemeral=True)
@@ -811,6 +831,16 @@ class DiscordBridge:
             f"✅ Note enregistrée pour <@{membre.id}>.", ephemeral=True
         )
 
+        try:
+            await self.db.log_audit(
+                action="admin_note",
+                admin_id=str(interaction.user.id),
+                discord_id=str(membre.id),
+                details=texte[:200],
+            )
+        except Exception:
+            logger.exception("Failed to log admin note")
+
     async def _faq_command(self, interaction: discord.Interaction):
         if not self.auto_responder:
             await interaction.response.send_message(
@@ -836,6 +866,52 @@ class DiscordBridge:
             embed.add_field(name=f"Q: {question}", value=f"R: {value}", inline=False)
 
         await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    async def _logs_command(self, interaction: discord.Interaction, limite: int = 20):
+        if interaction.user.id != self.admin_id:
+            await interaction.response.send_message("Seul l'admin peut utiliser cette commande.", ephemeral=True)
+            return
+
+        limite = max(1, min(limite, 100))
+        await interaction.response.defer(ephemeral=True, thinking=True)
+
+        try:
+            logs = await self.db.get_recent_audit_logs(limit=limite)
+            if not logs:
+                await interaction.followup.send("Aucune entrée d'audit trouvée.", ephemeral=True)
+                return
+
+            lines = []
+            for log in logs:
+                created = log.get("created_at", "?")
+                try:
+                    dt = datetime.datetime.fromisoformat(created.replace("Z", "+00:00"))
+                    created = dt.strftime("%d/%m %H:%M")
+                except Exception:
+                    pass
+                action = log.get("action", "?")
+                discord_id = log.get("discord_id")
+                admin_id = log.get("admin_id")
+                details = log.get("details") or ""
+                user_str = f" user=<@{discord_id}>" if discord_id else ""
+                admin_str = f" admin=<@{admin_id}>" if admin_id else ""
+                lines.append(f"`[{created}]` **{action}**{user_str}{admin_str} {details}")
+
+            message = "\n".join(lines)
+            if len(message) > 1900:
+                message = message[:1900] + "\n... (tronqué)"
+
+            embed = discord.Embed(
+                title=f"Dernières actions auditées ({len(logs)})",
+                description=message,
+                color=discord.Color.dark_grey(),
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+        except Exception:
+            logger.exception("Logs command failed")
+            await interaction.followup.send(
+                f"❌ Impossible de récupérer les logs. Contacte l'équipe {BOT_NAME}.", ephemeral=True
+            )
 
     async def _invitations_command(self, interaction: discord.Interaction, statut: str = "all"):
         if interaction.user.id != self.admin_id:
@@ -981,6 +1057,15 @@ class DiscordBridge:
             await interaction.followup.send(
                 f"✅ Demande de renouvellement envoyée. L'équipe {BOT_NAME} te contactera bientôt.", ephemeral=True
             )
+
+            try:
+                await self.db.log_audit(
+                    action="renew_requested",
+                    discord_id=discord_id,
+                    details=f"email={user.get('email')}",
+                )
+            except Exception:
+                logger.exception("Failed to log renewal request")
         except Exception:
             logger.exception("Renew command failed for user %s", discord_id)
             await interaction.followup.send(
@@ -1033,6 +1118,17 @@ class DiscordBridge:
             await interaction.followup.send(
                 f"✅ Synchronisation terminée : {success} succès, {failed} échecs.", ephemeral=True
             )
+
+            try:
+                target = str(membre.id) if membre else "all"
+                await self.db.log_audit(
+                    action="sync_manual",
+                    admin_id=str(interaction.user.id),
+                    discord_id=target if membre else None,
+                    details=f"success={success}, failed={failed}",
+                )
+            except Exception:
+                logger.exception("Failed to log sync command")
         except Exception:
             logger.exception("Sync command failed")
             await interaction.followup.send(
@@ -1118,6 +1214,13 @@ class DiscordBridge:
             guild = self.bot.get_guild(self.guild_id) or await self.bot.fetch_guild(self.guild_id)
             result = await self.sync_service.sync_all(guild)
             logger.info("Auto-sync completed: %s success, %s failed", result.get("success", 0), result.get("failed", 0))
+            try:
+                await self.db.log_audit(
+                    action="sync_auto",
+                    details=f"success={result.get('success', 0)}, failed={result.get('failed', 0)}",
+                )
+            except Exception:
+                logger.exception("Failed to log auto-sync")
             if result.get("failed", 0) > 0:
                 await self._notify_admin_auto_sync(result)
         except Exception:

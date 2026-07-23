@@ -62,6 +62,18 @@ class Database:
             )
             """
         )
+        await self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS audit_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                action TEXT NOT NULL,
+                discord_id TEXT,
+                admin_id TEXT,
+                details TEXT,
+                created_at TEXT
+            )
+            """
+        )
         await self.conn.commit()
 
     async def get_mapping(self, platform: str, platform_user_id: str):
@@ -119,6 +131,22 @@ class Database:
         sql = f"INSERT OR REPLACE INTO users ({cols}) VALUES ({placeholders})"
         await self.conn.execute(sql, tuple(values[k] for k in keys))
         await self.conn.commit()
+
+    async def log_audit(self, action: str, discord_id: str | None = None, admin_id: str | None = None, details: str | None = None):
+        now = datetime.datetime.utcnow().isoformat()
+        await self.conn.execute(
+            "INSERT INTO audit_logs (action, discord_id, admin_id, details, created_at) VALUES (?, ?, ?, ?, ?)",
+            (action, discord_id, admin_id, details, now),
+        )
+        await self.conn.commit()
+
+    async def get_recent_audit_logs(self, limit: int = 20):
+        async with self.conn.execute(
+            "SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT ?",
+            (limit,)
+        ) as cursor:
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
 
     async def get_all_users(self):
         async with self.conn.execute("SELECT * FROM users ORDER BY created_at DESC") as cursor:

@@ -10,8 +10,9 @@ logger = logging.getLogger(__name__)
 
 
 class InvitationManager:
-    def __init__(self, wizarr_client):
+    def __init__(self, wizarr_client, db=None):
         self.wizarr_client = wizarr_client
+        self.db = db
 
     async def list_invitations(self, status: str | None = None):
         data = await self.wizarr_client.get_invitations()
@@ -55,6 +56,12 @@ class RevokeButton(ui.Button):
                 embed=None,
                 view=None,
             )
+            if manager.db:
+                await manager.db.log_audit(
+                    action="invitation_revoked",
+                    admin_id=str(interaction.user.id),
+                    details=f"code={self.code}, id={self.invitation_id}",
+                )
         except Exception:
             logger.exception("Failed to revoke invitation %s", self.invitation_id)
             await interaction.response.send_message(
