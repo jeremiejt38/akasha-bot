@@ -120,6 +120,7 @@ Available slash commands for members:
 - **`/account`** — Displays linked account info: email, Plex username, Wizarr invitation expiration date, trust score, and quick links to Plex, Jellyfin and Seerr.
 - **`/request <title>`** — Searches Overseerr and creates a media request after confirmation.
 - **`/renew`** — Requests a subscription renewal. Stores the request and notifies the admin.
+- **`/support <sujet> <description>`** — Opens a support ticket that is sent to the admin by DM.
 - **`/status`** — Shows the health status of Akasha services (Plex, Jellyfin, Seerr, Wizarr, website).
 
 ## Admin commands
