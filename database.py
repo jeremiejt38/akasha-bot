@@ -164,6 +164,14 @@ class Database:
             row = await cursor.fetchone()
             return dict(row) if row else None
 
+    async def get_user_by_overseerr_id(self, overseerr_id: int | str):
+        async with self.conn.execute(
+            "SELECT * FROM users WHERE overseerr_id = ?",
+            (overseerr_id,),
+        ) as cursor:
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
     async def get_user_by_plex_username(self, plex_username: str):
         async with self.conn.execute(
             "SELECT * FROM users WHERE LOWER(overseerr_plex_username) = LOWER(?)",

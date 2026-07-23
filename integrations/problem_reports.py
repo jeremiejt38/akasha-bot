@@ -303,9 +303,11 @@ class ProblemReportFlow:
                 creator = issue.get("createdBy") or {}
                 settings = creator.get("settings") or {}
                 discord_ids = settings.get("discordIds") or ([settings["discordId"]] if settings.get("discordId") else [])
-                if not discord_ids:
-                    continue
-                user = await self.db.get_user_by_discord_id(str(discord_ids[0]))
+                user = None
+                if discord_ids:
+                    user = await self.db.get_user_by_discord_id(str(discord_ids[0]))
+                if user is None and creator.get("id") is not None:
+                    user = await self.db.get_user_by_overseerr_id(creator["id"])
                 if not user:
                     continue
                 media = issue.get("media") or {}
