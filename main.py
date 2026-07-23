@@ -15,6 +15,7 @@ from platforms.discord import DiscordPlatform
 from integrations.wizarr_client import WizarrClient
 from integrations.overseerr_client import OverseerrClient
 from integrations.tracearr_client import TracearrClient
+from integrations.tautulli_client import TautulliClient
 from webhook_server import WebhookServer
 
 load_dotenv()
@@ -55,6 +56,7 @@ async def main():
     overseerr_client = OverseerrClient() if os.getenv("OVERSEERR_BASE_URL") else None
     wizarr_client = WizarrClient() if os.getenv("WIZARR_BASE_URL") else None
     tracearr_client = TracearrClient() if os.getenv("TRACEARR_BASE_URL") else None
+    tautulli_client = TautulliClient() if os.getenv("TAUTULLI_BASE_URL") else None
 
     discord = DiscordBridge(
         db=db,
@@ -63,6 +65,7 @@ async def main():
         overseerr_client=overseerr_client,
         wizarr_client=wizarr_client,
         tracearr_client=tracearr_client,
+        tautulli_client=tautulli_client,
     )
 
     telegram = TelegramPlatform(token=os.getenv("TELEGRAM_TOKEN"), discord=discord, db=db)

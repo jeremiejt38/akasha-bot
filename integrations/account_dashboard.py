@@ -5,56 +5,53 @@ from discord import ui
 
 
 class AccountPanel(ui.View):
-    def __init__(self, dashboard):
+    def __init__(self, dashboard, preferences=None):
         super().__init__(timeout=None)
         self.dashboard = dashboard
+        self.preferences = preferences or {}
+        self._add_refresh()
+        self._add_toggle("DM problèmes", "dm_problem_notifications", "account:dm:problems")
+        self._add_toggle("DM demandes", "dm_request_notifications", "account:dm:requests")
 
-    @ui.button(label="Voir mon compte", style=discord.ButtonStyle.primary, custom_id="account:show")
-    async def show(self, interaction, _button):
-        embed = await self.dashboard.build_embed(interaction.user.id)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-        await self.dashboard.move_panel_to_bottom(interaction.channel, interaction.message)
+    def _add_refresh(self):
+        button = ui.Button(label="Actualiser", style=discord.ButtonStyle.primary, custom_id="account:refresh")
 
-    @ui.button(label="Préférences DM", style=discord.ButtonStyle.secondary, custom_id="account:preferences")
-    async def preferences(self, interaction, _button):
-        user = await self.dashboard.db.get_user_by_discord_id(str(interaction.user.id)) or {}
-        await interaction.response.send_message(
-            "Configure tes notifications :",
-            view=NotificationPreferencesView(self.dashboard, user),
-            ephemeral=True,
-        )
-        await self.dashboard.move_panel_to_bottom(interaction.channel, interaction.message)
+        async def callback(interaction):
+            await interaction.response.defer(ephemeral=True, thinking=True)
+            embed = await self.dashboard.build_embed(interaction.user.id)
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            await self.dashboard.move_panel_to_bottom(interaction.channel, interaction.message)
 
+        button.callback = callback
+        self.add_item(button)
 
-class NotificationPreferencesView(ui.View):
-    def __init__(self, dashboard, user):
-        super().__init__(timeout=300)
-        self.dashboard = dashboard
-        self.user = user
-        self._add_toggle("Problèmes", "dm_problem_notifications", user.get("dm_problem_notifications", 1))
-        self._add_toggle("Demandes disponibles", "dm_request_notifications", user.get("dm_request_notifications", 1))
-
-    def _add_toggle(self, label, field, enabled):
+    def _add_toggle(self, label, field, custom_id):
+        enabled = bool(self.preferences.get(field, 1))
         button = ui.Button(
-            label=f"{label} : {'activés' if enabled else 'désactivés'}",
+            label=label,
             style=discord.ButtonStyle.success if enabled else discord.ButtonStyle.secondary,
+            custom_id=custom_id,
         )
 
         async def callback(interaction):
-            new_value = not bool(self.user.get(field, 1))
-            self.user[field] = int(new_value)
-            await self.dashboard.db.update_notification_preferences(str(interaction.user.id), **{field: new_value})
-            await interaction.response.edit_message(view=NotificationPreferencesView(self.dashboard, self.user))
+            await interaction.response.defer(ephemeral=True)
+            user = await self.dashboard.db.get_user_by_discord_id(str(interaction.user.id)) or {}
+            enabled = not bool(user.get(field, 1))
+            await self.dashboard.db.update_notification_preferences(str(interaction.user.id), **{field: enabled})
+            user[field] = int(enabled)
+            await interaction.followup.send(f"{label} {'activés' if enabled else 'désactivés'}.", ephemeral=True)
+            await self.dashboard.move_panel_to_bottom(interaction.channel, interaction.message, user)
 
         button.callback = callback
         self.add_item(button)
 
 
 class AccountDashboard:
-    def __init__(self, bridge, db, overseerr_client):
+    def __init__(self, bridge, db, overseerr_client, tautulli_client=None):
         self.bridge = bridge
         self.db = db
         self.overseerr_client = overseerr_client
+        self.tautulli_client = tautulli_client
 
     async def ensure_channel(self, guild):
         role_names = (
@@ -84,14 +81,14 @@ class AccountDashboard:
         await channel.send(embed=embed, view=AccountPanel(self))
         return channel
 
-    async def move_panel_to_bottom(self, channel, panel_message):
+    async def move_panel_to_bottom(self, channel, panel_message, preferences=None):
         await panel_message.delete()
         embed = discord.Embed(
             title="Mon compte Akasha",
             description="Consulte tes informations, tes statistiques et tes préférences avec les boutons ci-dessous.",
             color=discord.Color.blue(),
         )
-        await channel.send(embed=embed, view=AccountPanel(self))
+        await channel.send(embed=embed, view=AccountPanel(self, preferences))
 
     async def build_embed(self, discord_id):
         user = await self.db.get_user_by_discord_id(str(discord_id))
@@ -102,16 +99,19 @@ class AccountDashboard:
 
         requests = await self._request_stats(user.get("overseerr_id"))
         problems = await self.db.get_problem_report_counts(str(discord_id))
+        tautulli = await self._tautulli_stats(user.get("email"))
         expires = user.get("wizarr_invite_expires")
         days = self._days_remaining(expires)
         embed.add_field(name="Date d'inscription", value=self._format_date(user.get("created_at")), inline=True)
-        embed.add_field(name="Première inscription", value=self._format_date(user.get("created_at")), inline=True)
-        embed.add_field(name="Expiration", value=self._format_date(expires), inline=True)
+        embed.add_field(name="Expiration actuelle", value=self._format_date(expires), inline=True)
         embed.add_field(name="Jours restants", value=str(days) if days is not None else "Illimité / inconnue", inline=True)
         embed.add_field(name="Demandes", value=str(requests["total"]), inline=True)
         embed.add_field(name="Demandes disponibles", value=str(requests["available"]), inline=True)
         embed.add_field(name="Problèmes signalés", value=str(problems["total"]), inline=True)
         embed.add_field(name="Problèmes en attente", value=str(problems["open"]), inline=True)
+        embed.add_field(name="Films regardés", value=str(tautulli["movies"]) if tautulli else "Non disponible", inline=True)
+        embed.add_field(name="Épisodes regardés", value=str(tautulli["episodes"]) if tautulli else "Non disponible", inline=True)
+        embed.add_field(name="Temps de visionnage", value=self._format_duration(tautulli["total_seconds"]) if tautulli else "Non disponible", inline=True)
         return embed
 
     async def _request_stats(self, overseerr_id):
@@ -129,6 +129,20 @@ class AccountDashboard:
             if page + 1 >= page_info.get("pages", 1):
                 return {"total": total, "available": available}
             page += 1
+
+    async def _tautulli_stats(self, email):
+        if not self.tautulli_client:
+            return None
+        try:
+            return await self.tautulli_client.get_user_statistics_by_email(email)
+        except Exception:
+            return None
+
+    @staticmethod
+    def _format_duration(seconds):
+        days, remaining = divmod(seconds, 86400)
+        hours = remaining // 3600
+        return f"{days} j {hours} h"
 
     @staticmethod
     def _format_date(value):
