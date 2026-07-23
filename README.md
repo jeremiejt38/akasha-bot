@@ -1,6 +1,6 @@
 # Multiplaform Bridge Inbox - Discord unified inbox bot
 
-![Version](https://img.shields.io/badge/version-0.26.0-blue)
+![Version](https://img.shields.io/badge/version-0.27.0-blue)
 
 Bot Discord Python servant de bridge de messagerie unifiée.
 
@@ -251,7 +251,12 @@ Do NOT commit real credentials. Use `.env` and a proper secrets manager for prod
 
 ## Changelog
 
-### v0.26.x ← *actuel*
+### v0.27.x ← *actuel*
+
+- **feat**: endpoints webhook Plex (`/webhooks/plex`) et Jellyfin (`/webhooks/jellyfin`) pour les notifications de nouveau média
+- **feat**: envoi d'embeds Discord dans les channels configurés lors d'ajout de média
+
+### v0.26.x
 
 - **feat**: table `audit_logs` et commande admin `/logs [limite]` pour consulter l'historique
 - **feat**: traçage des actions clés : invitations, renouvellements, sync, notes, révocations
