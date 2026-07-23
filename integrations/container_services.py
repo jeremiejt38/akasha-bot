@@ -2,6 +2,7 @@ import asyncio
 import datetime
 import logging
 import os
+from urllib.parse import quote
 
 import aiohttp
 import discord
@@ -33,6 +34,7 @@ class DockerServiceClient:
     def __init__(self, base_url=None):
         self.base_url = (base_url or os.getenv("DOCKER_API_URL", "http://172.22.0.2:2375")).rstrip("/")
         self.session = None
+        self.update_cache = {}
 
     async def _get(self, path):
         if self.session is None:
@@ -55,18 +57,50 @@ class DockerServiceClient:
             network = next(iter((details.get("NetworkSettings") or {}).get("Networks", {}).values()), {})
             ports = self._format_ports((details.get("NetworkSettings") or {}).get("Ports") or {})
             image = (details.get("Config") or {}).get("Image") or container.get("Image") or "N/A"
+            image_info = await self._image_info(image)
+            labels = ((image_info or {}).get("Config") or {}).get("Labels") or {}
+            version = labels.get("org.opencontainers.image.version") or labels.get("build_version") or image.rsplit(":", 1)[-1]
             results.append({
                 "name": service,
                 "running": bool(state.get("Running")),
                 "healthy": (state.get("Health") or {}).get("Status") != "unhealthy",
                 "error": state.get("Error") or state.get("Status") or "Arrêté",
-                "version": image.rsplit(":", 1)[-1] if ":" in image else image,
+                "version": version,
+                "image": image,
                 "ip": network.get("IPAddress") or "N/A",
                 "ports": ports,
                 "started_at": state.get("StartedAt"),
-                "update_available": None,
+                "update_available": await self._update_available(image, image_info),
             })
         return results
+
+    async def _image_info(self, image):
+        try:
+            return await self._get(f"/images/{quote(image, safe='')}/json")
+        except aiohttp.ClientResponseError as error:
+            if error.status != 403:
+                logger.warning("Unable to inspect image %s: %s", image, error.status)
+            return None
+
+    async def _update_available(self, image, image_info):
+        cached = self.update_cache.get(image)
+        now = datetime.datetime.now(datetime.timezone.utc)
+        if cached and now - cached[0] < datetime.timedelta(minutes=15):
+            return cached[1]
+        if not image_info:
+            return None
+        local_digests = image_info.get("RepoDigests") or []
+        try:
+            distribution = await self._get(f"/distribution/{quote(image, safe='')}/json")
+            remote_digest = (distribution.get("Descriptor") or {}).get("digest")
+            value = bool(remote_digest and local_digests and all(not digest.endswith(remote_digest) for digest in local_digests))
+        except aiohttp.ClientResponseError as error:
+            value = None if error.status == 403 else False
+        except Exception:
+            logger.exception("Unable to check image update for %s", image)
+            value = None
+        self.update_cache[image] = (now, value)
+        return value
 
     @staticmethod
     def _format_ports(ports):
@@ -150,20 +184,17 @@ class ContainerServicesMonitor:
     def _embed(self, statuses):
         color = discord.Color.green() if all(status["running"] and status.get("healthy", True) for status in statuses) else discord.Color.red()
         embed = discord.Embed(title="Services Akasha", color=color, timestamp=datetime.datetime.now(datetime.timezone.utc))
+        lines = []
         for status in statuses:
-            if status.get("update_available"):
-                icon, state, update = "🔵", "Mise à jour disponible", "Non"
-            elif status["running"] and status.get("healthy", True):
-                icon, state, update = "🟢", "Démarré", "Non vérifiable"
+            if not status["running"] or not status.get("healthy", True):
+                icon, state = "�", "Arrêté"
+            elif status.get("update_available"):
+                icon, state = "�", "MàJ dispo"
             else:
-                icon, state, update = "🔴", "Arrêté", "Non vérifiable"
-            value = f"{icon} **{state}**\nVersion : `{status['version']}`\nÀ jour : {update}\nIP : `{status['ip']}`\nPorts : `{status['ports']}`"
-            if status["running"] and status.get("healthy", True):
-                value += f"\nUptime : {self._uptime(status.get('started_at'))}"
-            else:
-                value += f"\nErreur : {status.get('error') or 'inconnue'}"
-            embed.add_field(name=status["name"], value=value[:1024], inline=False)
-        embed.set_footer(text="Actualisation toutes les 30 secondes")
+                icon, state = "�", "À jour" if status.get("update_available") is False else "Démarré"
+            lines.append(f"{icon} **{status['name']}** · {state} · `{status['version']}`")
+        embed.description = "\n".join(lines)
+        embed.set_footer(text="État toutes les 30 s · mises à jour vérifiées toutes les 15 min")
         return embed
 
     async def _notify_unavailable(self, statuses):
