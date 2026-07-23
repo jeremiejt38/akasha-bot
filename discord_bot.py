@@ -509,7 +509,7 @@ class DiscordBridge:
             return
 
         await interaction.response.defer(ephemeral=True, thinking=True)
-        base_url = os.getenv("WHATSAPP_SERVICE_URL", "http://localhost:3001")
+        base_url = os.getenv("WHATSAPP_SERVICE_URL", "http://whatsapp:3001")
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.post(f"{base_url}/restart", timeout=aiohttp.ClientTimeout(total=10)) as resp:
