@@ -180,30 +180,38 @@ class ReportPanel(ui.View):
             await interaction.followup.send(embed=self.flow.embed(report), view=MemberReportView(self.flow, report), ephemeral=True)
 
 class AdminReportDashboard(ui.View):
-    def __init__(self, flow):
+    def __init__(self, flow, status=None):
         super().__init__(timeout=None)
-        self.flow = flow
+        self.flow, self.status = flow, status
+        for label, value, custom_id in (
+            ("Tous", None, "report:admin:all"),
+            ("Ouverts", "open", "report:admin:open"),
+            ("Fermés", "closed", "report:admin:closed"),
+        ):
+            button = ui.Button(
+                label=label,
+                style=discord.ButtonStyle.primary if value == status else discord.ButtonStyle.secondary,
+                custom_id=custom_id,
+            )
+            button.callback = self._callback(value)
+            self.add_item(button)
+
+    def _callback(self, status):
+        async def callback(interaction):
+            await self._show(interaction, status)
+        return callback
+
     async def _show(self, interaction, status):
         if interaction.user.id != self.flow.admin_id:
             await interaction.response.send_message("Réservé à l'administrateur.", ephemeral=True)
             return
-        reports = await self.flow.db.get_problem_reports(status)
-        if not reports:
-            await interaction.response.send_message("Aucun signalement dans ce filtre.")
-            return
-        await interaction.response.send_message(
-            f"{len(reports)} signalement(s) — {'Tous' if status is None else ('Ouverts' if status == 'open' else 'Fermés')}",
+        reports = list(reversed(await self.flow.db.get_problem_reports(status)))
+        label = "Tous" if status is None else ("Ouverts" if status == "open" else "Fermés")
+        await interaction.response.edit_message(
+            content=f"{len(reports)} signalement(s) — {label}",
             embeds=[self.flow.embed(report) for report in reports[:10]],
+            view=AdminReportDashboard(self.flow, status),
         )
-    @ui.button(label="Tous", style=discord.ButtonStyle.secondary, custom_id="report:admin:all")
-    async def all_reports(self, interaction, _button):
-        await self._show(interaction, None)
-    @ui.button(label="Ouverts", style=discord.ButtonStyle.primary, custom_id="report:admin:open")
-    async def open_reports(self, interaction, _button):
-        await self._show(interaction, "open")
-    @ui.button(label="Fermés", style=discord.ButtonStyle.secondary, custom_id="report:admin:closed")
-    async def closed_reports(self, interaction, _button):
-        await self._show(interaction, "closed")
 
 class AdminView(ui.View):
     def __init__(self,flow,report_id):
@@ -242,11 +250,23 @@ class ProblemReportFlow:
         for report in await self.db.get_problem_reports("closed"):
             if report.get("admin_message_id"):
                 bot.add_view(ReopenView(self,report["id"]),message_id=report["admin_message_id"])
+    async def _find_admin_dashboard(self, channel):
+        async for message in channel.history(limit=100):
+            for row in message.components:
+                for component in row.children:
+                    if (component.custom_id or "").startswith("report:admin:"):
+                        return message
+        return None
+
     async def publish_admin_report(self, guild, report_id):
         report = await self.db.get_problem_report(report_id)
         channel = await self.ensure_admin_channel(guild)
+        dashboard = await self._find_admin_dashboard(channel)
+        if dashboard:
+            await dashboard.delete()
         message = await channel.send(embed=self.embed(report), view=AdminView(self, report_id))
         await self.db.update_problem_report(report_id, admin_message_id=message.id, admin_channel_id=channel.id)
+        await channel.send("Tableau des signalements :", view=AdminReportDashboard(self))
         return message
 
     async def sync_plex_reports(self, guild=None):
@@ -421,8 +441,7 @@ class ProblemReportFlow:
             channel=await guild.create_text_channel("signalements",category=category,overwrites=overwrites,reason="Akasha problem reports")
         else:
             await channel.edit(overwrites=overwrites,reason="Managed by Akasha problem reports")
-        async for message in channel.history(limit=30):
-            if message.author.id==self.bridge.bot.user.id and message.components:
-                return channel
+        if await self._find_admin_dashboard(channel):
+            return channel
         await channel.send("Tableau des signalements :",view=AdminReportDashboard(self))
         return channel

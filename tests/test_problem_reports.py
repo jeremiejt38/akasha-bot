@@ -6,7 +6,7 @@ import sqlite3
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from database import Database
-from integrations.problem_reports import AdminView, MediaView, ProblemReportFlow
+from integrations.problem_reports import AdminReportDashboard, AdminView, MediaView, ProblemReportFlow
 
 
 def test_legacy_database_is_migrated_once(tmp_path):
@@ -83,6 +83,15 @@ def test_report_embed_labels_original_description():
     assert [(field.name, field.value) for field in embed.fields if field.name == "Description du problème"] == [
         ("Description du problème", "L'image reste noire.")
     ]
+
+
+def test_admin_dashboard_highlights_selected_filter():
+    flow = type("Flow", (), {"admin_id": 1})()
+    dashboard = AdminReportDashboard(flow, "closed")
+    styles = {item.label: item.style for item in dashboard.children}
+    assert styles["Fermés"].name == "primary"
+    assert styles["Tous"].name == "secondary"
+    assert styles["Ouverts"].name == "secondary"
 
 
 def test_admin_view_uses_report_specific_custom_ids():
