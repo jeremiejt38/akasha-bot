@@ -6,6 +6,7 @@ from urllib.parse import quote
 
 import aiohttp
 import discord
+from integrations.admin_access import ensure_admin_category_access
 
 logger = logging.getLogger(__name__)
 
@@ -126,6 +127,7 @@ class ContainerServicesMonitor:
         self.down_since = {}
         self.alerted = set()
         self.message_id = None
+        self.channel_id = None
 
     def start(self):
         if self.task is None or self.task.done():
@@ -145,20 +147,17 @@ class ContainerServicesMonitor:
             return
         statuses = await self.client.statuses()
         await self._notify_unavailable(statuses)
-        channel = await self.ensure_channel(guild)
+        channel = guild.get_channel(self.channel_id) if self.channel_id else None
+        if channel is None:
+            channel = await self.ensure_channel(guild)
         await self._update_dashboard(channel, statuses)
 
     async def ensure_channel(self, guild):
-        category = discord.utils.get(guild.categories, name="Administration") or await guild.create_category("Administration")
-        overwrites = {guild.default_role: discord.PermissionOverwrite(view_channel=False)}
-        admin = guild.get_member(self.bridge.admin_id)
-        if admin:
-            overwrites[admin] = discord.PermissionOverwrite(view_channel=True, read_message_history=True, send_messages=True)
+        category = await ensure_admin_category_access(guild, self.bridge.admin_id)
         channel = discord.utils.get(category.text_channels, name="services")
         if channel is None:
-            channel = await guild.create_text_channel("services", category=category, overwrites=overwrites, reason="Akasha services monitor")
-        else:
-            await channel.edit(overwrites=overwrites, reason="Managed by Akasha services monitor")
+            channel = await guild.create_text_channel("services", category=category, reason="Akasha services monitor")
+        self.channel_id = channel.id
         return channel
 
     async def _update_dashboard(self, channel, statuses):
