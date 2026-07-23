@@ -65,6 +65,7 @@ class AdminDashboard:
         expiring = sum(1 for u in users if (d := self._days_until(u.get("wizarr_invite_expires"))) is not None and d <= EXPIRATION_DAYS_WARNING)
         low_trust = [u for u in users if (u.get("tracearr_trust_score") or 100) < TRUST_SCORE_LOW_THRESHOLD]
         avg_trust = sum((u.get("tracearr_trust_score") or 0) for u in users) / total if total else 0
+        pending_renewals = sum(1 for u in users if u.get("renewal_status") == "pending")
 
         embed = discord.Embed(
             title="Tableau de bord Akasha — Vue globale",
@@ -75,6 +76,7 @@ class AdminDashboard:
         embed.add_field(name="Expirations ≤ 7 j", value=str(expiring), inline=True)
         embed.add_field(name="Trust score moyen", value=f"{avg_trust:.1f}", inline=True)
         embed.add_field(name="Trust score bas", value=str(len(low_trust)), inline=True)
+        embed.add_field(name="Renouvellements en attente", value=str(pending_renewals), inline=True)
         return embed
 
     async def _build_subscribers_embed(self, page: int = 0) -> discord.Embed:
@@ -212,6 +214,28 @@ class AdminDashboard:
         embed.add_field(name="Trust score moyen", value=f"{avg_trust:.1f}", inline=True)
         return embed
 
+    async def _build_renewals_embed(self) -> discord.Embed:
+        users = await self._get_users()
+        pending = [u for u in users if u.get("renewal_status") == "pending"]
+
+        embed = discord.Embed(
+            title=f"Renouvellements en attente ({len(pending)})",
+            color=discord.Color.orange(),
+        )
+        if not pending:
+            embed.description = "Aucune demande de renouvellement en attente."
+            return embed
+
+        for u in pending:
+            name = f"<@{u.get('discord_id')}>"
+            value = (
+                f"Email: {u.get('email') or 'N/A'}\n"
+                f"Demandé le: {self._format_date(u.get('renewal_requested_at'))}"
+            )
+            embed.add_field(name=name, value=value, inline=False)
+
+        return embed
+
 
 class AdminDashboardView(ui.View):
     def __init__(self, dashboard: AdminDashboard):
@@ -264,4 +288,9 @@ class AdminDashboardView(ui.View):
     @ui.button(label="Stats", style=discord.ButtonStyle.secondary, emoji="📈")
     async def stats(self, interaction: discord.Interaction, _button: ui.Button):
         embed = await self.dashboard._build_stats_embed()
+        await self._update(interaction, embed)
+
+    @ui.button(label="Renouvellements", style=discord.ButtonStyle.secondary, emoji="🔄")
+    async def renewals(self, interaction: discord.Interaction, _button: ui.Button):
+        embed = await self.dashboard._build_renewals_embed()
         await self._update(interaction, embed)

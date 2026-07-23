@@ -119,6 +119,7 @@ Available slash commands for members:
 
 - **`/account`** — Displays linked account info: email, Plex username, Wizarr invitation expiration date, trust score, and quick links to Plex, Jellyfin and Seerr.
 - **`/request <title>`** — Searches Overseerr and creates a media request after confirmation.
+- **`/renew`** — Requests a subscription renewal. Stores the request and notifies the admin.
 - **`/status`** — Shows the health status of Akasha services (Plex, Jellyfin, Seerr, Wizarr, website).
 
 ## Admin commands
@@ -130,6 +131,7 @@ Available slash commands for members:
   - **Demandes** — pending Overseerr requests
   - **Trust bas** — members with low trust score
   - **Stats** — overall statistics
+  - **Renouvellements** — pending renewal requests from `/renew`
 - **`/reload`** — Reloads the auto-responder configuration from `config/auto_responses.json` without restarting the bot (admin only).
 - **`/note <@membre> <texte>`** — Adds a private admin note on a subscriber (admin only). Notes are visible in the `/dashboard` subscriber list.
 - **`/sync [@membre]`** — Synchronizes one subscriber or all subscribers with Overseerr: updates Discord ID, username, Plex username and (re)assigns the member role (admin only).
