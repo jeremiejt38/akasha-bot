@@ -148,6 +148,7 @@ class DiscordBridge:
         self.problem_reports = ProblemReportFlow(self, db, overseerr_client)
         self.account_dashboard = AccountDashboard(self, db, overseerr_client, tautulli_client)
         self._ready_event = asyncio.Event()
+        self._inbox_channel_locks: dict[tuple[str, str], asyncio.Lock] = {}
         self._closed = False
         self._bot_task = None
 
@@ -1834,47 +1835,51 @@ class DiscordBridge:
             raise
 
     async def get_or_create_channel_for(self, platform_tag: str, platform_user_id: str, display_name: str):
-        candidates = self._build_channel_name_candidates(platform_tag, display_name)
-        logger.debug("Resolving channel for %s user=%s display_name=%s (candidates=%s)", platform_tag, platform_user_id, display_name, len(candidates))
-        try:
-            guild = self.bot.get_guild(self.guild_id)
-            if guild is None:
-                guild = await self.bot.fetch_guild(self.guild_id)
-            category = await self.ensure_inbox_category()
+        normalized_user_id = str(platform_user_id).strip()
+        lock_key = (platform_tag, normalized_user_id)
+        lock = self._inbox_channel_locks.setdefault(lock_key, asyncio.Lock())
+        async with lock:
+            candidates = self._build_channel_name_candidates(platform_tag, display_name)
+            logger.debug("Resolving channel for %s user=%s display_name=%s (candidates=%s)", platform_tag, normalized_user_id, display_name, len(candidates))
+            try:
+                guild = self.bot.get_guild(self.guild_id)
+                if guild is None:
+                    guild = await self.bot.fetch_guild(self.guild_id)
+                category = await self.ensure_inbox_category()
 
-            existing_for_mapping = await self.db.get_mapping(platform_tag, platform_user_id)
-            if existing_for_mapping:
-                existing_channel = guild.get_channel(existing_for_mapping)
-                if existing_channel:
-                    logger.debug("Found existing channel %s for %s user=%s", existing_channel.id, platform_tag, platform_user_id)
-                    return existing_channel
-                logger.debug("Mapped channel %s no longer exists for %s user=%s", existing_for_mapping, platform_tag, platform_user_id)
+                existing_for_mapping = await self.db.get_mapping(platform_tag, normalized_user_id)
+                if existing_for_mapping:
+                    existing_channel = guild.get_channel(existing_for_mapping)
+                    if existing_channel:
+                        logger.debug("Found existing channel %s for %s user=%s", existing_channel.id, platform_tag, normalized_user_id)
+                        return existing_channel
+                    logger.debug("Mapped channel %s no longer exists for %s user=%s", existing_for_mapping, platform_tag, normalized_user_id)
 
-            for candidate_name in candidates:
-                existing = discord.utils.get(category.text_channels, name=candidate_name)
-                if existing:
-                    existing_mapping = await self.db.get_mapping_by_channel(existing.id)
-                    if existing_mapping == (platform_tag, platform_user_id):
-                        await self.db.set_mapping(platform_tag, platform_user_id, existing.id)
-                        return existing
-                    continue
+                for candidate_name in candidates:
+                    existing = discord.utils.get(category.text_channels, name=candidate_name)
+                    if existing:
+                        existing_mapping = await self.db.get_mapping_by_channel(existing.id)
+                        if existing_mapping == (platform_tag, normalized_user_id):
+                            await self.db.set_mapping(platform_tag, normalized_user_id, existing.id)
+                            return existing
+                        continue
 
-                try:
-                    channel = await guild.create_text_channel(candidate_name, category=category)
-                    await self.db.set_mapping(platform_tag, platform_user_id, channel.id)
-                    logger.info("Created channel %s (%s) for %s user=%s", channel.id, candidate_name, platform_tag, platform_user_id)
-                    return channel
-                except Exception:
-                    logger.warning("Failed to create channel with name '%s', trying next candidate", candidate_name)
-                    continue
+                    try:
+                        channel = await guild.create_text_channel(candidate_name, category=category)
+                        await self.db.set_mapping(platform_tag, normalized_user_id, channel.id)
+                        logger.info("Created channel %s (%s) for %s user=%s", channel.id, candidate_name, platform_tag, normalized_user_id)
+                        return channel
+                    except Exception:
+                        logger.warning("Failed to create channel with name '%s', trying next candidate", candidate_name)
+                        continue
 
-            raise RuntimeError("Unable to create a unique channel name")
-        except discord.Forbidden:
-            logger.exception("Bot lacks permission to create or access channel")
-            raise
-        except Exception:
-            logger.exception("Failed to get or create channel")
-            raise
+                raise RuntimeError("Unable to create a unique channel name")
+            except discord.Forbidden:
+                logger.exception("Bot lacks permission to create or access channel")
+                raise
+            except Exception:
+                logger.exception("Failed to get or create channel")
+                raise
 
     async def post_inbound_message(self, platform_tag: str, platform_user_id: str, display_name: str, text: str, attachments=None):
         try:

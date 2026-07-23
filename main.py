@@ -25,6 +25,7 @@ def _configure_logging():
     debug = os.getenv("DEBUG", "false").lower() in ("1", "true", "yes")
     level = logging.DEBUG if debug else logging.INFO
     logging.basicConfig(level=level, format="%(asctime)s %(levelname)s [%(name)s] %(message)s")
+    logging.getLogger("httpx").setLevel(logging.WARNING)
     return debug
 
 
