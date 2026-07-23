@@ -131,6 +131,7 @@ Available slash commands for members:
   - **Trust bas** — members with low trust score
   - **Stats** — overall statistics
 - **`/reload`** — Reloads the auto-responder configuration from `config/auto_responses.json` without restarting the bot (admin only).
+- **`/note <@membre> <texte>`** — Adds a private admin note on a subscriber (admin only). Notes are visible in the `/dashboard` subscriber list.
 
 ## Discord community onboarding
 

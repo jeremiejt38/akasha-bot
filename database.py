@@ -48,6 +48,7 @@ class Database:
                 wizarr_invite_expires TEXT,
                 created_at TEXT,
                 months_subscribed INTEGER DEFAULT 0,
+                admin_notes TEXT,
                 tracearr_user_id TEXT,
                 tracearr_username TEXT,
                 tracearr_trust_score REAL,
@@ -105,7 +106,7 @@ class Database:
             "discord_id", "email", "discord_username", "overseerr_id",
             "overseerr_username", "overseerr_plex_username", "overseerr_discord_ids",
             "wizarr_invite_code", "wizarr_invite_expires", "created_at", "months_subscribed",
-            "tracearr_user_id", "tracearr_username", "tracearr_trust_score",
+            "admin_notes", "tracearr_user_id", "tracearr_username", "tracearr_trust_score",
             "tracearr_total_violations", "tracearr_session_count", "tracearr_last_activity",
             "tracearr_stats", "updated_at",
         ]
@@ -126,7 +127,7 @@ class Database:
         allowed = {
             "email", "discord_username", "overseerr_id", "overseerr_username",
             "overseerr_plex_username", "overseerr_discord_ids", "wizarr_invite_code",
-            "wizarr_invite_expires", "created_at", "months_subscribed", "tracearr_user_id",
+            "wizarr_invite_expires", "created_at", "months_subscribed", "admin_notes", "tracearr_user_id",
             "tracearr_username", "tracearr_trust_score", "tracearr_total_violations",
             "tracearr_session_count", "tracearr_last_activity", "tracearr_stats", "updated_at",
         }
