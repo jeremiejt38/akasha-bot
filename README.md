@@ -113,6 +113,14 @@ Run the small pytest suite:
 pytest tests -q
 ```
 
+## Subscriber commands
+
+Available slash commands for members:
+
+- **`/account`** — Displays linked account info: email, Plex username, Wizarr invitation expiration date, trust score, and quick links to Plex, Jellyfin and Seerr.
+- **`/request <title>`** — Searches Overseerr and creates a media request after confirmation.
+- **`/status`** — Shows the health status of Akasha services (Plex, Jellyfin, Seerr, Wizarr, website).
+
 ## Discord community onboarding
 
 For community-enabled Discord servers, the bot can automate member onboarding:
