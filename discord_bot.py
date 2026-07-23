@@ -173,8 +173,11 @@ class DiscordBridge:
                     await self.onboarding.ensure_verification_channel(guild)
                     await self.problem_reports.ensure_member_channel(guild)
                     await self.problem_reports.ensure_admin_channel(guild)
-                    await self.problem_reports.sync_plex_reports()
-                    await self.problem_reports.sync_seerr_issues()
+                    plex_count = await self.problem_reports.sync_plex_reports(guild)
+                    seerr_count = await self.problem_reports.sync_seerr_issues(guild)
+                    if plex_count + seerr_count:
+                        admin = await self.bot.fetch_user(self.admin_id)
+                        await admin.send(f"{plex_count + seerr_count} nouveau(x) signalement(s) externe(s) importé(s) : Plex={plex_count}, Seerr={seerr_count}.")
                 else:
                     logger.warning("Guild %s not available to create verification channel", self.guild_id)
             except Exception:
