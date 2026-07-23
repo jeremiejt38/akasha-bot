@@ -23,6 +23,7 @@ from integrations.health_checker import HealthChecker, CONNECTION_CHECK_MARKER
 from integrations.onboarding import OnboardingFlow
 from integrations.admin_dashboard import AdminDashboard
 from integrations.expiration_alerts import ExpirationAlerts
+from integrations.sync_service import SyncService
 
 INBOX_CATEGORY_NAME = os.getenv("INBOX_CATEGORY_NAME", "📥 INBOX")
 BOT_NAME = os.getenv("BOT_NAME", "Akasha")
@@ -118,6 +119,7 @@ class DiscordBridge:
         self.onboarding = OnboardingFlow(self, overseerr_client, db)
         self.admin_dashboard = AdminDashboard(self, db, overseerr_client)
         self.expiration_alerts = ExpirationAlerts(self, db, guild_id, admin_id)
+        self.sync_service = SyncService(self, overseerr_client, db)
         self._ready_event = asyncio.Event()
         self._closed = False
         self._bot_task = None
@@ -284,6 +286,16 @@ class DiscordBridge:
             texte="La note à enregistrer"
         )(note_cmd)
         self.bot.tree.add_command(note_cmd, guild=discord.Object(id=self.guild_id))
+
+        sync_cmd = app_commands.Command(
+            name="sync",
+            description="Synchronise un abonné avec Overseerr (admin only)",
+            callback=self._sync_command
+        )
+        sync_cmd = app_commands.describe(
+            membre="L'abonné à synchroniser (laisse vide pour tous)"
+        )(sync_cmd)
+        self.bot.tree.add_command(sync_cmd, guild=discord.Object(id=self.guild_id))
 
     async def _handle_inbound_dm(self, message: discord.Message):
         try:
@@ -749,6 +761,58 @@ class DiscordBridge:
         await interaction.response.send_message(
             f"✅ Note enregistrée pour <@{membre.id}>.", ephemeral=True
         )
+
+    async def _sync_command(self, interaction: discord.Interaction, membre: discord.Member | None = None):
+        if interaction.user.id != self.admin_id:
+            await interaction.response.send_message("Seul l'admin peut utiliser cette commande.", ephemeral=True)
+            return
+        if not self.overseerr_client:
+            await interaction.response.send_message(
+                "La synchronisation Overseerr n'est pas configurée.", ephemeral=True
+            )
+            return
+
+        await interaction.response.defer(ephemeral=True, thinking=True)
+
+        try:
+            guild = self.bot.get_guild(self.guild_id) or await self.bot.fetch_guild(self.guild_id)
+            if membre:
+                result = await self.sync_service.sync_user(membre)
+                if result["ok"]:
+                    await interaction.followup.send(
+                        f"✅ <@{membre.id}> synchronisé avec succès.", ephemeral=True
+                    )
+                else:
+                    await interaction.followup.send(
+                        f"❌ Échec de la synchronisation de <@{membre.id}> : {result['error']}", ephemeral=True
+                    )
+                return
+
+            users = await self.db.get_all_users()
+            success = 0
+            failed = 0
+            for user in users:
+                member = guild.get_member(int(user["discord_id"]))
+                if member is None:
+                    try:
+                        member = await guild.fetch_member(int(user["discord_id"]))
+                    except Exception:
+                        failed += 1
+                        continue
+                result = await self.sync_service.sync_user(member)
+                if result["ok"]:
+                    success += 1
+                else:
+                    failed += 1
+
+            await interaction.followup.send(
+                f"✅ Synchronisation terminée : {success} succès, {failed} échecs.", ephemeral=True
+            )
+        except Exception:
+            logger.exception("Sync command failed")
+            await interaction.followup.send(
+                f"❌ Une erreur s'est produite pendant la synchronisation. Contacte l'équipe {BOT_NAME}.", ephemeral=True
+            )
 
     async def _get_user_data_for_inbound(self, platform_tag: str, platform_user_id: str):
         if platform_tag == "DC":
