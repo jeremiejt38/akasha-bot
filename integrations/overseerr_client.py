@@ -1,6 +1,7 @@
 import os
 import asyncio
 import logging
+from urllib.parse import urlencode, quote
 import aiohttp
 
 logger = logging.getLogger(__name__)
@@ -30,11 +31,13 @@ class OverseerrClient:
         if not self.base_url or not self.api_key:
             raise RuntimeError("OVERSEERR_BASE_URL and OVERSEERR_API_KEY must be configured")
         url = f"{self.base_url}/api/v1{path}"
+        if params:
+            url = f"{url}?{urlencode(params, doseq=True, quote_via=quote)}"
         headers = {"X-Api-Key": self.api_key}
         if json is not None:
             headers["Content-Type"] = "application/json"
         session = await self._session_ctx()
-        async with session.request(method, url, headers=headers, json=json, params=params) as resp:
+        async with session.request(method, url, headers=headers, json=json) as resp:
             resp.raise_for_status()
             if resp.status == 204:
                 return None
@@ -92,8 +95,33 @@ class OverseerrClient:
             page += 1
         return None
 
+    async def get_issues(self, page: int = 1, limit: int = 20):
+        return await self._request(
+            "GET",
+            "/issue",
+            params={"take": limit, "skip": max(0, page - 1) * limit},
+        )
+
+    async def comment_issue(self, issue_id: int | str, message: str):
+        return await self._request("POST", f"/issue/{issue_id}/comment", json={"message": message})
+
+    async def update_issue_status(self, issue_id: int | str, status: str):
+        return await self._request("POST", f"/issue/{issue_id}/{status}")
+
     async def search_media(self, query: str, page: int = 1, limit: int = 10):
-        return await self._request("GET", "/search", params={"query": query, "page": page, "limit": limit})
+        data = await self._request("GET", "/search", params={"query": query})
+        if limit and isinstance(data.get("results"), list):
+            data["results"] = data["results"][:limit]
+        return data
+
+    async def get_movie_details(self, media_id: int):
+        return await self._request("GET", f"/movie/{media_id}")
+
+    async def get_tv_details(self, media_id: int):
+        return await self._request("GET", f"/tv/{media_id}")
+
+    async def get_tv_season(self, media_id: int, season_number: int):
+        return await self._request("GET", f"/tv/{media_id}/season/{season_number}")
 
     async def request_media(self, media_type: str, media_id: int, user_id: int):
         """Create a media request in Overseerr.

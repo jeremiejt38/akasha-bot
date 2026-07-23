@@ -28,6 +28,7 @@ from integrations.sync_service import SyncService
 from integrations.invitation_manager import InvitationManager
 from integrations.poll_manager import PollView
 from integrations.services_monitor import ServicesMonitor
+from integrations.problem_reports import ProblemReportFlow
 
 INBOX_CATEGORY_NAME = os.getenv("INBOX_CATEGORY_NAME", "📥 INBOX")
 BOT_NAME = os.getenv("BOT_NAME", "Akasha")
@@ -138,6 +139,7 @@ class DiscordBridge:
         self.sync_service = SyncService(self, overseerr_client, db)
         self.invitation_manager = InvitationManager(wizarr_client, db)
         self.services_monitor = ServicesMonitor()
+        self.problem_reports = ProblemReportFlow(self, db, overseerr_client)
         self._ready_event = asyncio.Event()
         self._closed = False
         self._bot_task = None
@@ -162,12 +164,20 @@ class DiscordBridge:
                 logger.exception("Failed to sync slash commands")
             try:
                 self.onboarding.register_persistent_views(self.bot)
+                await self.problem_reports.register(self.bot)
             except Exception:
                 logger.exception("Failed to register persistent onboarding views")
             try:
                 guild = self.bot.get_guild(self.guild_id)
                 if guild:
                     await self.onboarding.ensure_verification_channel(guild)
+                    await self.problem_reports.ensure_member_channel(guild)
+                    await self.problem_reports.ensure_admin_channel(guild)
+                    plex_count = await self.problem_reports.sync_plex_reports(guild)
+                    seerr_count = await self.problem_reports.sync_seerr_issues(guild)
+                    if plex_count + seerr_count:
+                        admin = await self.bot.fetch_user(self.admin_id)
+                        await admin.send(f"{plex_count + seerr_count} nouveau(x) signalement(s) externe(s) importé(s) : Plex={plex_count}, Seerr={seerr_count}.")
                 else:
                     logger.warning("Guild %s not available to create verification channel", self.guild_id)
             except Exception:
@@ -1419,6 +1429,7 @@ class DiscordBridge:
         await self._ready_event.wait()
         self.expiration_alerts.start()
         self._auto_sync_task = loop.create_task(self._run_auto_sync())
+        self._external_reports_task = loop.create_task(self._run_external_report_sync())
         self._service_health_task = loop.create_task(self._run_service_health_check())
 
     async def close(self):
@@ -1428,8 +1439,30 @@ class DiscordBridge:
             self._auto_sync_task.cancel()
         if getattr(self, "_service_health_task", None):
             self._service_health_task.cancel()
+        if getattr(self, "_external_reports_task", None):
+            self._external_reports_task.cancel()
         await self.services_monitor.close()
         await self.bot.close()
+
+    async def _run_external_report_sync(self):
+        interval_minutes = int(os.getenv("REPORT_SYNC_INTERVAL_MINUTES", "10"))
+        interval_seconds = max(60, interval_minutes * 60)
+        logger.info("Starting external report sync every %s minutes", interval_minutes)
+        while not self._closed:
+            try:
+                await asyncio.sleep(interval_seconds)
+                if self._closed:
+                    break
+                plex_count = await self.problem_reports.sync_plex_reports()
+                seerr_count = await self.problem_reports.sync_seerr_issues()
+                total = plex_count + seerr_count
+                if total:
+                    admin = await self.bot.fetch_user(self.admin_id)
+                    await admin.send(f"{total} nouveau(x) signalement(s) externe(s) importé(s) : Plex={plex_count}, Seerr={seerr_count}.")
+            except asyncio.CancelledError:
+                break
+            except Exception:
+                logger.exception("External report sync failed")
 
     async def _run_auto_sync(self):
         interval_hours = int(os.getenv("AUTO_SYNC_INTERVAL_HOURS", "24"))
