@@ -46,6 +46,8 @@ class Database:
                 overseerr_discord_ids TEXT,
                 wizarr_invite_code TEXT,
                 wizarr_invite_expires TEXT,
+                created_at TEXT,
+                months_subscribed INTEGER DEFAULT 0,
                 tracearr_user_id TEXT,
                 tracearr_username TEXT,
                 tracearr_trust_score REAL,
@@ -102,7 +104,7 @@ class Database:
         columns = [
             "discord_id", "email", "discord_username", "overseerr_id",
             "overseerr_username", "overseerr_plex_username", "overseerr_discord_ids",
-            "wizarr_invite_code", "wizarr_invite_expires",
+            "wizarr_invite_code", "wizarr_invite_expires", "created_at", "months_subscribed",
             "tracearr_user_id", "tracearr_username", "tracearr_trust_score",
             "tracearr_total_violations", "tracearr_session_count", "tracearr_last_activity",
             "tracearr_stats", "updated_at",
@@ -115,13 +117,18 @@ class Database:
         await self.conn.execute(sql, tuple(values[k] for k in keys))
         await self.conn.commit()
 
+    async def get_all_users(self):
+        async with self.conn.execute("SELECT * FROM users ORDER BY created_at DESC") as cursor:
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
+
     async def update_user(self, discord_id: str, **fields):
         allowed = {
             "email", "discord_username", "overseerr_id", "overseerr_username",
             "overseerr_plex_username", "overseerr_discord_ids", "wizarr_invite_code",
-            "wizarr_invite_expires", "tracearr_user_id", "tracearr_username",
-            "tracearr_trust_score", "tracearr_total_violations", "tracearr_session_count",
-            "tracearr_last_activity", "tracearr_stats", "updated_at",
+            "wizarr_invite_expires", "created_at", "months_subscribed", "tracearr_user_id",
+            "tracearr_username", "tracearr_trust_score", "tracearr_total_violations",
+            "tracearr_session_count", "tracearr_last_activity", "tracearr_stats", "updated_at",
         }
         updates = {k: v for k, v in fields.items() if k in allowed}
         if not updates:

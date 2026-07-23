@@ -121,6 +121,16 @@ Available slash commands for members:
 - **`/request <title>`** — Searches Overseerr and creates a media request after confirmation.
 - **`/status`** — Shows the health status of Akasha services (Plex, Jellyfin, Seerr, Wizarr, website).
 
+## Admin commands
+
+- **`/dashboard`** — Opens an interactive admin dashboard (admin only) with buttons to switch between:
+  - **Vue globale** — total subscribers, upcoming expirations, average trust score
+  - **Abonnés** — paginated list with email, signup date, expiration, accumulated months, trust score
+  - **Expirations** — members expiring within 7 days
+  - **Demandes** — pending Overseerr requests
+  - **Trust bas** — members with low trust score
+  - **Stats** — overall statistics
+
 ## Discord community onboarding
 
 For community-enabled Discord servers, the bot can automate member onboarding:
