@@ -123,6 +123,7 @@ Available slash commands for members:
 - **`/support <sujet> <description>`** — Opens a support ticket that is sent to the admin by DM.
 - **`/feedback <message>`** — Sends anonymous feedback to the admin.
 - **`/faq`** — Displays frequently asked questions from the auto-responder knowledge base.
+- **`/link <email>`** — Links your Discord account to your Seerr account directly (alternative to the onboarding modal).
 - **`/status`** — Shows the health status of Akasha services (Plex, Jellyfin, Seerr, Wizarr, website).
 
 ## Admin commands
@@ -275,6 +276,8 @@ Do NOT commit real credentials. Use `.env` and a proper secrets manager for prod
 ### v0.32.x ← *actuel*
 
 - **feat**: commande admin `/stats` avec statistiques avancées des abonnés
+- **feat**: commande `/link <email>` pour lier son compte Seerr sans passer par le modal
+- **feat**: amélioration du message de bienvenue avec la liste des commandes disponibles
 
 ### v0.31.x
 
