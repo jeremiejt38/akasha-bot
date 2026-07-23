@@ -141,6 +141,7 @@ Available slash commands for members:
 - **`/export`** — Exports the subscriber list as a CSV file (admin only). Includes Discord ID, username, email, Plex username, signup date, expiration, accumulated months, trust score, admin notes and renewal status.
 - **`/invitations [statut]`** — Lists Wizarr invitations filtered by status (`all`, `unused`, `used`, `expired`) and lets you revoke them with a button (admin only).
 - **`/logs [limite]`** — Shows recent audited actions: invitations, renewals, syncs, notes, role revocations, etc. (admin only).
+- **`/poll <question> <option1> <option2> [option3] [option4]`** — Creates a simple poll with up to 4 options. Users vote by clicking buttons and results update live (admin only).
 
 ## Discord community onboarding
 
