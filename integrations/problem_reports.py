@@ -251,6 +251,8 @@ class ProblemReportFlow:
         return message
 
     async def sync_plex_reports(self, guild=None):
+        if not self.plex_reports.token:
+            return 0
         guild = guild or self.bridge.bot.get_guild(self.bridge.guild_id)
         page = await self.plex_reports.list_reports()
         imported = 0
@@ -337,7 +339,9 @@ class ProblemReportFlow:
         if r.get('subcategory'): e.add_field(name="Sous-type",value=r['subcategory'],inline=True)
         if r.get('media_title'): e.add_field(name="Média",value=r['media_title'],inline=False)
         if r.get('admin_response'): e.add_field(name="Réponse",value=r['admin_response'],inline=False)
-        if r.get('resolved_at'): e.add_field(name="Résolu",value=r['resolved_at'],inline=False)
+        if r.get('resolved_at'):
+            resolved_by = f" par <@{r['admin_id']}>" if r.get("admin_id") else ""
+            e.add_field(name="Résolu",value=f"{r['resolved_at']}{resolved_by}",inline=False)
         return e
     async def reply(self,interaction,id,text):
         r=await self.db.get_problem_report(id)
