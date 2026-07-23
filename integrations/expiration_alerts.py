@@ -107,10 +107,6 @@ class ExpirationAlerts:
 
     async def _notify_admin(self, expiring_soon: list, already_expired: list):
         try:
-            admin = await self.discord_bridge.bot.fetch_user(self.admin_id)
-            if admin is None:
-                return
-
             lines = [f"**Alertes d'expiration Akasha** — {datetime.datetime.now(datetime.timezone.utc).strftime('%d/%m/%Y')}"]
 
             if expiring_soon:
@@ -132,10 +128,8 @@ class ExpirationAlerts:
             message = "\n".join(lines)
             if len(message) > 1900:
                 message = message[:1900] + "\n... (message tronqué)"
-            await admin.send(message)
+            await self.discord_bridge.send_admin_log(message)
             logger.info("Sent expiration alert to admin: %s expiring soon, %s expired", len(expiring_soon), len(already_expired))
-        except discord.Forbidden:
-            logger.warning("Cannot send expiration alert to admin via DM")
         except Exception:
             logger.exception("Failed to send expiration alert to admin")
 

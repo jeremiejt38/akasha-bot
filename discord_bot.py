@@ -27,6 +27,7 @@ from integrations.expiration_alerts import ExpirationAlerts
 from integrations.sync_service import SyncService
 from integrations.invitation_manager import InvitationManager
 from integrations.poll_manager import PollView
+from integrations.services_monitor import ServicesMonitor
 
 INBOX_CATEGORY_NAME = os.getenv("INBOX_CATEGORY_NAME", "📥 INBOX")
 BOT_NAME = os.getenv("BOT_NAME", "Akasha")
@@ -124,6 +125,7 @@ class DiscordBridge:
         self.expiration_alerts = ExpirationAlerts(self, db, guild_id, admin_id)
         self.sync_service = SyncService(self, overseerr_client, db)
         self.invitation_manager = InvitationManager(wizarr_client, db)
+        self.services_monitor = ServicesMonitor()
         self._ready_event = asyncio.Event()
         self._closed = False
         self._bot_task = None
@@ -376,6 +378,13 @@ class DiscordBridge:
             option4="Option 4",
         )(poll_cmd)
         self.bot.tree.add_command(poll_cmd, guild=discord.Object(id=self.guild_id))
+
+        services_cmd = app_commands.Command(
+            name="services",
+            description="Affiche l'état des services Akasha (admin only)",
+            callback=self._services_command
+        )
+        self.bot.tree.add_command(services_cmd, guild=discord.Object(id=self.guild_id))
 
     async def _handle_inbound_dm(self, message: discord.Message):
         try:
@@ -871,11 +880,9 @@ class DiscordBridge:
         discord_id = str(interaction.user.id)
 
         try:
-            admin = await self.bot.fetch_user(self.admin_id)
-            if admin:
-                await admin.send(
-                    f"💬 **Feedback de <@{discord_id}>**\n{message[:1500]}"
-                )
+            await self.send_admin_log(
+                f"💬 **Feedback de <@{discord_id}>**\n{message[:1500]}"
+            )
             await interaction.followup.send(
                 f"✅ Feedback envoyé. Merci d'aider à améliorer {BOT_NAME} !", ephemeral=True
             )
@@ -941,6 +948,38 @@ class DiscordBridge:
 
         view = PollView(question, options, author_id=interaction.user.id)
         await interaction.response.send_message(embed=view.embed, view=view)
+
+    async def _services_command(self, interaction: discord.Interaction):
+        if interaction.user.id != self.admin_id:
+            await interaction.response.send_message("Seul l'admin peut utiliser cette commande.", ephemeral=True)
+            return
+        await interaction.response.defer(ephemeral=True, thinking=True)
+
+        try:
+            results = await self.services_monitor.check_all()
+            embed = discord.Embed(
+                title=f"État des services {BOT_NAME}",
+                description="Statut, version et informations des services surveillés.",
+                color=discord.Color.blue(),
+            )
+            for svc in results:
+                if svc["ok"] is None:
+                    emoji = "⚪"
+                    status_text = "Non configuré"
+                elif svc["ok"]:
+                    emoji = "🟢"
+                    status_text = f"En ligne ({svc['status']})"
+                else:
+                    emoji = "🔴"
+                    status_text = f"Hors ligne ({svc['status']})"
+                value = f"{emoji} {status_text}\nVersion: {svc['version']}\nUptime: {svc['uptime']}"
+                embed.add_field(name=svc["name"], value=value, inline=True)
+            await interaction.followup.send(embed=embed, ephemeral=True)
+        except Exception:
+            logger.exception("Services command failed")
+            await interaction.followup.send(
+                f"❌ Impossible de récupérer l'état des services.", ephemeral=True
+            )
 
     async def _logs_command(self, interaction: discord.Interaction, limite: int = 20):
         if interaction.user.id != self.admin_id:
@@ -1041,13 +1080,11 @@ class DiscordBridge:
             return
 
         try:
-            admin = await self.bot.fetch_user(self.admin_id)
-            if admin:
-                await admin.send(
-                    f"🎫 **Ticket support de <@{discord_id}>** ({user.get('email') or 'email inconnu'})\n"
-                    f"**Sujet :** {sujet}\n"
-                    f"**Description :** {description[:1500]}"
-                )
+            await self.send_admin_log(
+                f"🎫 **Ticket support de <@{discord_id}>** ({user.get('email') or 'email inconnu'})\n"
+                f"**Sujet :** {sujet}\n"
+                f"**Description :** {description[:1500]}"
+            )
             await interaction.followup.send(
                 f"✅ Ticket envoyé. L'équipe {BOT_NAME} te répondra dès que possible.", ephemeral=True
             )
@@ -1120,12 +1157,10 @@ class DiscordBridge:
 
             # Notify admin
             try:
-                admin = await self.bot.fetch_user(self.admin_id)
-                if admin:
-                    await admin.send(
-                        f"Demande de renouvellement de <@{discord_id}> ({user.get('email') or 'email inconnu'}).\n"
-                        f"Utilise `/dashboard` pour voir les détails."
-                    )
+                await self.send_admin_log(
+                    f"Demande de renouvellement de <@{discord_id}> ({user.get('email') or 'email inconnu'}).\n"
+                    f"Utilise `/dashboard` pour voir les détails."
+                )
             except Exception:
                 logger.exception("Failed to notify admin about renewal request from %s", discord_id)
 
@@ -1264,6 +1299,7 @@ class DiscordBridge:
         self.expiration_alerts.stop()
         if getattr(self, "_auto_sync_task", None):
             self._auto_sync_task.cancel()
+        await self.services_monitor.close()
         await self.bot.close()
 
     async def _run_auto_sync(self):
@@ -1300,6 +1336,28 @@ class DiscordBridge:
                 await self._notify_admin_auto_sync(result)
         except Exception:
             logger.exception("Auto-sync run failed")
+
+    async def send_admin_log(self, message: str, embed: discord.Embed | None = None):
+        """Send a log/message to the admin channel or fallback to DM."""
+        channel_id = os.getenv("ADMIN_LOG_CHANNEL_ID")
+        sent = False
+        if channel_id:
+            try:
+                channel = self.bot.get_channel(int(channel_id))
+                if channel:
+                    await channel.send(message, embed=embed)
+                    sent = True
+                else:
+                    logger.warning("Admin log channel %s not found", channel_id)
+            except Exception:
+                logger.exception("Failed to send admin log to channel %s", channel_id)
+        if not sent:
+            try:
+                admin = await self.bot.fetch_user(self.admin_id)
+                if admin:
+                    await admin.send(message, embed=embed)
+            except Exception:
+                logger.exception("Failed to fallback DM admin log")
 
     async def post_media_notification(self, channel_id: str | None, source: str, title: str, media_type: str | None, summary: str | None, year: int | None, thumb: str | None):
         if not channel_id:
@@ -1382,15 +1440,10 @@ class DiscordBridge:
 
     async def _notify_admin_auto_sync(self, result: dict):
         try:
-            admin = await self.bot.fetch_user(self.admin_id)
-            if admin is None:
-                return
             errors = "\n".join(result.get("errors", [])[:5])
-            await admin.send(
+            await self.send_admin_log(
                 f"⚠️ Auto-sync terminé avec {result.get('failed', 0)} échecs sur {result.get('success', 0) + result.get('failed', 0)} utilisateurs.\n{errors}"
             )
-        except discord.Forbidden:
-            logger.warning("Cannot notify admin via DM")
         except Exception:
             logger.exception("Failed to notify admin about auto-sync")
 
