@@ -16,6 +16,8 @@ logger = logging.getLogger(__name__)
 DEFAULT_WARNING_DAYS = int(os.getenv("EXPIRATION_WARNING_DAYS", "7"))
 DEFAULT_ALERT_HOUR = int(os.getenv("EXPIRATION_ALERT_HOUR", "9"))
 NOTIFY_SUBSCRIBERS = os.getenv("EXPIRATION_NOTIFY_SUBSCRIBERS", "true").lower() in ("1", "true", "yes")
+REVOKE_ROLE_ON_EXPIRATION = os.getenv("REVOKE_ROLE_ON_EXPIRATION", "true").lower() in ("1", "true", "yes")
+MEMBER_ROLE_NAME = os.getenv("MEMBER_ROLE_NAME", "Abonné")
 
 
 class ExpirationAlerts:
@@ -99,6 +101,10 @@ class ExpirationAlerts:
             for user, days in already_expired:
                 await self._notify_subscriber(user, days, expired=True)
 
+        if REVOKE_ROLE_ON_EXPIRATION:
+            for user, _days in already_expired:
+                await self._revoke_role(user)
+
     async def _notify_admin(self, expiring_soon: list, already_expired: list):
         try:
             admin = await self.discord_bridge.bot.fetch_user(self.admin_id)
@@ -156,6 +162,31 @@ class ExpirationAlerts:
             logger.warning("Cannot notify subscriber %s about expiration", user.get("discord_id"))
         except Exception:
             logger.exception("Failed to notify subscriber %s about expiration", user.get("discord_id"))
+
+    async def _revoke_role(self, user: dict):
+        try:
+            guild = self.discord_bridge.bot.get_guild(self.guild_id)
+            if guild is None:
+                guild = await self.discord_bridge.bot.fetch_guild(self.guild_id)
+            role = discord.utils.get(guild.roles, name=MEMBER_ROLE_NAME)
+            if role is None:
+                logger.warning("Member role %s not found for revocation", MEMBER_ROLE_NAME)
+                return
+
+            discord_id = user.get("discord_id")
+            if not discord_id:
+                return
+            member = guild.get_member(int(discord_id))
+            if member is None:
+                try:
+                    member = await guild.fetch_member(int(discord_id))
+                except Exception:
+                    return
+            if role in member.roles:
+                await member.remove_roles(role, reason="Abonnement expiré")
+                logger.info("Revoked member role for user %s", discord_id)
+        except Exception:
+            logger.exception("Failed to revoke role for user %s", user.get("discord_id"))
 
     def _format_date(self, date_str: str | None) -> str:
         if not date_str:

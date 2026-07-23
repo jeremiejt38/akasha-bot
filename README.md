@@ -180,6 +180,7 @@ EXPIRATION_NOTIFY_SUBSCRIBERS=true
 - `EXPIRATION_WARNING_DAYS` — number of days before expiration to trigger an alert
 - `EXPIRATION_ALERT_HOUR` — UTC hour at which the daily check runs
 - `EXPIRATION_NOTIFY_SUBSCRIBERS` — also DM affected subscribers if `true`
+- `REVOKE_ROLE_ON_EXPIRATION` — automatically remove the member role from expired subscribers if `true`
 
 ## Automatic synchronization
 
