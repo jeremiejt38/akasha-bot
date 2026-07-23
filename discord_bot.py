@@ -20,8 +20,10 @@ from discord import app_commands
 from discord.ext import commands
 from integrations.auto_responder import AutoResponder
 from integrations.health_checker import HealthChecker, CONNECTION_CHECK_MARKER
+from integrations.onboarding import OnboardingFlow
 
 INBOX_CATEGORY_NAME = os.getenv("INBOX_CATEGORY_NAME", "📥 INBOX")
+BOT_NAME = os.getenv("BOT_NAME", "Akasha")
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +80,7 @@ class DiscordBridge:
         enable_auto_responder = os.getenv("AUTO_RESPONDER_ENABLED", "true").lower() in ("1", "true", "yes")
         self.auto_responder = AutoResponder() if enable_auto_responder else None
         self.health_checker = HealthChecker()
+        self.onboarding = OnboardingFlow(self, overseerr_client, db)
         self._ready_event = asyncio.Event()
         self._closed = False
         self._bot_task = None
@@ -92,6 +95,10 @@ class DiscordBridge:
                 logger.info("Synced commands for guild %s: %s", self.guild_id, [c.name for c in synced])
             except Exception:
                 logger.exception("Failed to sync slash commands")
+            try:
+                self.onboarding.register_persistent_views(self.bot)
+            except Exception:
+                logger.exception("Failed to register persistent onboarding views")
             self._ready_event.set()
 
         @self.bot.event
@@ -155,6 +162,24 @@ class DiscordBridge:
                 else:
                     logger.debug("No mapping found for channel %s", channel_id)
                 return
+
+        @self.bot.event
+        async def on_member_join(member: discord.Member):
+            if member.guild.id != self.guild_id or member.bot:
+                return
+            await self.onboarding.start(member)
+
+        @self.bot.event
+        async def on_member_update(before: discord.Member, after: discord.Member):
+            if after.guild.id != self.guild_id or after.bot:
+                return
+            try:
+                before_completed = before.flags.completed_onboarding if before.flags else False
+                after_completed = after.flags.completed_onboarding if after.flags else False
+            except AttributeError:
+                return
+            if not before_completed and after_completed:
+                await self.onboarding.start(after)
 
         whatsapp_cmd = app_commands.Command(
             name="whatsapp",
@@ -233,7 +258,7 @@ class DiscordBridge:
             async with aiohttp.ClientSession() as session:
                 async with session.post(f"{base_url}/restart", timeout=aiohttp.ClientTimeout(total=10)) as resp:
                     if resp.status >= 400:
-                        await interaction.followup.send("Failed to restart the WhatsApp bridge.", ephemeral=True)
+                        await interaction.followup.send(f"{BOT_NAME} n'a pas réussi à redémarrer le pont WhatsApp.", ephemeral=True)
                         return
 
                 qr_text = None
@@ -247,21 +272,21 @@ class DiscordBridge:
                                 break
 
             if not qr_text:
-                await interaction.followup.send("No QR code was generated. WhatsApp may already be connected.", ephemeral=True)
+                await interaction.followup.send("Aucun QR code n'a été généré. WhatsApp est peut-être déjà connecté.", ephemeral=True)
                 return
 
             try:
                 await interaction.user.send(f"Scan this QR code with WhatsApp to authenticate:\n```\n{qr_text}\n```")
-                await interaction.followup.send("QR code sent to your DMs.", ephemeral=True)
+                await interaction.followup.send("QR code envoyé en DM.", ephemeral=True)
             except discord.Forbidden:
-                await interaction.followup.send("I cannot send you a DM. Please enable direct messages.", ephemeral=True)
+                await interaction.followup.send("Je ne peux pas t'envoyer de DM. Active les messages directs.", ephemeral=True)
         except Exception as e:
             logger.exception("WhatsApp command failed")
-            await interaction.followup.send(f"Error: {e}", ephemeral=True)
+            await interaction.followup.send(f"Erreur {BOT_NAME} : {e}", ephemeral=True)
 
     async def _link_command(self, interaction: discord.Interaction, email: str):
         if not self.overseerr_client:
-            await interaction.response.send_message("La liaison de compte n'est pas configurée.", ephemeral=True)
+            await interaction.response.send_message(f"La liaison de compte n'est pas configurée. Contacte l'équipe {BOT_NAME}.", ephemeral=True)
             return
 
         await interaction.response.defer(ephemeral=True, thinking=True)
@@ -340,7 +365,7 @@ class DiscordBridge:
         except Exception:
             logger.exception("Link command failed for email=%s discord=%s", email_clean, requester_discord_id)
             await interaction.followup.send(
-                "Une erreur s'est produite pendant la liaison. Vérifie la configuration.", ephemeral=True
+                f"Une erreur s'est produite pendant la liaison. Contacte l'équipe {BOT_NAME}.", ephemeral=True
             )
 
     @staticmethod
@@ -362,7 +387,7 @@ class DiscordBridge:
             return
 
         if not self.wizarr_client:
-            await interaction.response.send_message("L'intégration Wizarr n'est pas configurée.", ephemeral=True)
+            await interaction.response.send_message(f"L'intégration Wizarr n'est pas configurée. Contacte l'équipe {BOT_NAME}.", ephemeral=True)
             return
 
         channel = interaction.channel
@@ -418,7 +443,7 @@ class DiscordBridge:
             )
         except Exception:
             logger.exception("Invite command failed in channel %s", channel.id)
-            await interaction.followup.send("Une erreur s'est produite en créant l'invitation.", ephemeral=True)
+            await interaction.followup.send(f"Une erreur s'est produite en créant l'invitation. Contacte l'équipe {BOT_NAME}.", ephemeral=True)
 
     async def _compute_stacked_duration_days(self, discord_id: str, requested_days: int) -> int:
         user = await self.db.get_user_by_discord_id(discord_id)
@@ -507,11 +532,11 @@ class DiscordBridge:
         except Exception:
             logger.exception("Failed to bump channel %s to top", channel.id)
 
-    async def _send_auto_response(self, platform_tag: str, platform_user_id: str, channel, text: str, user_data: dict):
+    async def _send_auto_response(self, platform_tag: str, platform_user_id: str, channel, text: str, user_data: dict) -> bool:
         try:
             response = self.auto_responder.respond(text, user_data)
             if not response:
-                return
+                return False
 
             if response == CONNECTION_CHECK_MARKER:
                 logger.info("Health check triggered for %s user=%s", platform_tag, platform_user_id)
@@ -523,8 +548,10 @@ class DiscordBridge:
             if handler:
                 await handler.send(platform_user_id, response)
             await channel.send(f"**Auto-reply**: {response}")
+            return True
         except Exception:
             logger.exception("Auto-responder failed for %s user=%s", platform_tag, platform_user_id)
+            return False
 
     async def start(self, token: str):
         loop = asyncio.get_event_loop()
@@ -664,10 +691,30 @@ class DiscordBridge:
                     except Exception:
                         pass
 
+            answered = False
             if self.auto_responder and text:
                 user_data = await self._get_user_data_for_inbound(platform_tag, platform_user_id)
-                await self._send_auto_response(platform_tag, platform_user_id, channel, text, user_data)
+                answered = await self._send_auto_response(platform_tag, platform_user_id, channel, text, user_data)
+
+            if not answered and platform_tag == "DC":
+                await self._notify_admin_unanswered(platform_user_id, text)
 
             await self._bump_channel_to_top(channel)
         except Exception:
             logger.exception("Failed to post inbound message to Discord")
+
+    async def _notify_admin_unanswered(self, discord_id: str, text: str):
+        if not self.onboarding.config.support_dm_enabled:
+            return
+        try:
+            admin = await self.bot.fetch_user(self.admin_id)
+            if admin is None:
+                return
+            await admin.send(
+                f"[Message en attente - {BOT_NAME}] de <@{discord_id}> (Discord ID: {discord_id}):\n{text[:1500]}"
+            )
+            logger.info("Notified admin about unanswered DM from user %s", discord_id)
+        except discord.Forbidden:
+            logger.warning("Cannot notify admin via DM")
+        except Exception:
+            logger.exception("Failed to notify admin about unanswered DM")
