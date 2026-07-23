@@ -289,6 +289,7 @@ Do NOT commit real credentials. Use `.env` and a proper secrets manager for prod
 - **fix**: suppression du doublon d'enregistrement de la commande `/link`
 - **fix**: correction de la syntaxe du healthcheck docker-compose
 - **chore**: ajout des labels d'icône Unraid pour les conteneurs
+- **ci: workflow GitHub Actions pour publier l'image Docker sur GHCR**
 
 ### v0.33.x
 
