@@ -185,6 +185,11 @@ class ExpirationAlerts:
             if role in member.roles:
                 await member.remove_roles(role, reason="Abonnement expiré")
                 logger.info("Revoked member role for user %s", discord_id)
+                await self.db.log_audit(
+                    action="role_revoked",
+                    discord_id=discord_id,
+                    details="Abonnement expiré",
+                )
         except Exception:
             logger.exception("Failed to revoke role for user %s", user.get("discord_id"))
 
