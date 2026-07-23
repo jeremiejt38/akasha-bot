@@ -1,6 +1,6 @@
 # Multiplaform Bridge Inbox - Discord unified inbox bot
 
-![Version](https://img.shields.io/badge/version-0.12.2-blue)
+![Version](https://img.shields.io/badge/version-0.13.0-blue)
 
 Bot Discord Python servant de bridge de messagerie unifiée.
 
@@ -183,7 +183,13 @@ Do NOT commit real credentials. Use `.env` and a proper secrets manager for prod
 
 ## Changelog
 
-### v0.12.x ← *actuel*
+### v0.13.x ← *actuel*
+
+- **feat**: commandes abonnés `/account`, `/request <titre>` et `/status`
+- **feat**: méthodes Overseerr `search_media` et `request_media`
+- **test**: tests unitaires pour le client Overseerr
+
+### v0.12.x
 
 - **feat**: onboarding automatique Discord — détection nouveaux membres, vérification compte Seerr, attribution du rôle `Abonné`, modal email et DM de confirmation
 - **feat**: support DM avec notification admin quand l'auto-respondant n'a pas de réponse
