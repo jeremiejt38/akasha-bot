@@ -28,6 +28,7 @@ from integrations.sync_service import SyncService
 from integrations.invitation_manager import InvitationManager
 from integrations.poll_manager import PollView
 from integrations.services_monitor import ServicesMonitor
+from integrations.container_services import ContainerServicesMonitor
 from integrations.problem_reports import ProblemReportFlow
 from integrations.account_dashboard import AccountDashboard, AccountPanel
 
@@ -141,6 +142,7 @@ class DiscordBridge:
         self.sync_service = SyncService(self, overseerr_client, db)
         self.invitation_manager = InvitationManager(wizarr_client, db)
         self.services_monitor = ServicesMonitor()
+        self.container_services = ContainerServicesMonitor(self)
         self.problem_reports = ProblemReportFlow(self, db, overseerr_client)
         self.account_dashboard = AccountDashboard(self, db, overseerr_client, tautulli_client)
         self._ready_event = asyncio.Event()
@@ -178,6 +180,7 @@ class DiscordBridge:
                     await self.problem_reports.ensure_member_channel(guild)
                     await self.account_dashboard.ensure_channel(guild)
                     await self.problem_reports.ensure_admin_channel(guild)
+                    self.container_services.start()
                     plex_count = await self.problem_reports.sync_plex_reports(guild)
                     seerr_count = await self.problem_reports.sync_seerr_issues(guild)
                     if plex_count + seerr_count:
