@@ -189,12 +189,11 @@ class AdminReportDashboard(ui.View):
             return
         reports = await self.flow.db.get_problem_reports(status)
         if not reports:
-            await interaction.response.send_message("Aucun signalement dans ce filtre.", ephemeral=True)
+            await interaction.response.send_message("Aucun signalement dans ce filtre.")
             return
         await interaction.response.send_message(
             f"{len(reports)} signalement(s) — {'Tous' if status is None else ('Ouverts' if status == 'open' else 'Fermés')}",
             embeds=[self.flow.embed(report) for report in reports[:10]],
-            ephemeral=True,
         )
     @ui.button(label="Tous", style=discord.ButtonStyle.secondary, custom_id="report:admin:all")
     async def all_reports(self, interaction, _button):
@@ -254,74 +253,85 @@ class ProblemReportFlow:
         if not self.plex_reports.token:
             return 0
         guild = guild or self.bridge.bot.get_guild(self.bridge.guild_id)
-        page = await self.plex_reports.list_reports()
         imported = 0
-        for report in page.get("nodes", []):
-            if await self.db.get_problem_report_by_external_id("plex", report["id"]):
-                continue
-            author = report.get("user") or {}
-            user = await self.db.get_user_by_plex_username(author.get("username") or author.get("displayName") or "")
-            if not user:
-                continue
-            report_id = await self.db.create_problem_report(
-                discord_id=user["discord_id"],
-                discord_username=user.get("discord_username") or author.get("displayName") or author.get("username") or "Plex",
-                category="content",
-                subcategory="Plex",
-                media_type=None,
-                media_id=None,
-                media_title=report.get("url"),
-                season_number=None,
-                episode_number=None,
-                episode_title=None,
-                description=report.get("message") or "Signalement Plex",
-                reported_at=report.get("date") or datetime.datetime.utcnow().isoformat(),
-                source="plex",
-                external_id=report["id"],
-            )
-            if guild:
-                await self.publish_admin_report(guild, report_id)
-            imported += 1
-        return imported
+        after = None
+        while True:
+            page = await self.plex_reports.list_reports(first=100, after=after)
+            for report in page.get("nodes", []):
+                if await self.db.get_problem_report_by_external_id("plex", report["id"]):
+                    continue
+                author = report.get("user") or {}
+                user = await self.db.get_user_by_plex_username(author.get("username") or author.get("displayName") or "")
+                if not user:
+                    continue
+                report_id = await self.db.create_problem_report(
+                    discord_id=user["discord_id"],
+                    discord_username=user.get("discord_username") or author.get("displayName") or author.get("username") or "Plex",
+                    category="content",
+                    subcategory="Plex",
+                    media_type=None,
+                    media_id=None,
+                    media_title=report.get("url"),
+                    season_number=None,
+                    episode_number=None,
+                    episode_title=None,
+                    description=report.get("message") or "Signalement Plex",
+                    reported_at=report.get("date") or datetime.datetime.utcnow().isoformat(),
+                    source="plex",
+                    external_id=report["id"],
+                )
+                if guild:
+                    await self.publish_admin_report(guild, report_id)
+                imported += 1
+            page_info = page.get("pageInfo") or {}
+            if not page_info.get("hasNextPage"):
+                return imported
+            after = page_info.get("endCursor")
+
     async def sync_seerr_issues(self, guild=None):
         guild = guild or self.bridge.bot.get_guild(self.bridge.guild_id)
         if not self.overseerr:
             return 0
-        page = await self.overseerr.get_issues()
         imported = 0
-        for issue in page.get("results", []):
-            external_id = str(issue.get("id"))
-            if not external_id or await self.db.get_problem_report_by_external_id("seerr", external_id):
-                continue
-            creator = issue.get("createdBy") or {}
-            settings = creator.get("settings") or {}
-            discord_ids = settings.get("discordIds") or ([settings["discordId"]] if settings.get("discordId") else [])
-            if not discord_ids:
-                continue
-            user = await self.db.get_user_by_discord_id(str(discord_ids[0]))
-            if not user:
-                continue
-            media = issue.get("media") or {}
-            report_id = await self.db.create_problem_report(
-                discord_id=user["discord_id"],
-                discord_username=user.get("discord_username") or creator.get("displayName") or creator.get("username") or "Seerr",
-                category="content",
-                subcategory="Seerr",
-                media_type=media.get("mediaType"),
-                media_id=media.get("tmdbId") or media.get("id"),
-                media_title=media.get("title") or media.get("name"),
-                season_number=None,
-                episode_number=None,
-                episode_title=None,
-                description=issue.get("description") or issue.get("comment") or "Signalement Seerr",
-                reported_at=issue.get("createdAt") or datetime.datetime.utcnow().isoformat(),
-                source="seerr",
-                external_id=external_id,
-            )
-            if guild:
-                await self.publish_admin_report(guild, report_id)
-            imported += 1
-        return imported
+        page_number = 1
+        while True:
+            page = await self.overseerr.get_issues(page=page_number, limit=20)
+            for issue in page.get("results", []):
+                external_id = str(issue.get("id"))
+                if not external_id or await self.db.get_problem_report_by_external_id("seerr", external_id):
+                    continue
+                creator = issue.get("createdBy") or {}
+                settings = creator.get("settings") or {}
+                discord_ids = settings.get("discordIds") or ([settings["discordId"]] if settings.get("discordId") else [])
+                if not discord_ids:
+                    continue
+                user = await self.db.get_user_by_discord_id(str(discord_ids[0]))
+                if not user:
+                    continue
+                media = issue.get("media") or {}
+                report_id = await self.db.create_problem_report(
+                    discord_id=user["discord_id"],
+                    discord_username=user.get("discord_username") or creator.get("displayName") or creator.get("username") or "Seerr",
+                    category="content",
+                    subcategory="Seerr",
+                    media_type=media.get("mediaType"),
+                    media_id=media.get("tmdbId") or media.get("id"),
+                    media_title=media.get("title") or media.get("name"),
+                    season_number=None,
+                    episode_number=None,
+                    episode_title=None,
+                    description=issue.get("description") or issue.get("comment") or "Signalement Seerr",
+                    reported_at=issue.get("createdAt") or datetime.datetime.utcnow().isoformat(),
+                    source="seerr",
+                    external_id=external_id,
+                )
+                if guild:
+                    await self.publish_admin_report(guild, report_id)
+                imported += 1
+            page_info = page.get("pageInfo") or {}
+            if page_number >= page_info.get("pages", 1):
+                return imported
+            page_number += 1
     async def search(self,q,typ): return [r for r in (await self.overseerr.search_media(q)).get("results",[]) if r.get("mediaType")==typ]
     async def seasons(self,id): return (await self.overseerr.get_tv_details(id)).get("seasons",[])
     async def episodes(self,id,season): return (await self.overseerr.get_tv_season(id,season)).get("episodes",[])
