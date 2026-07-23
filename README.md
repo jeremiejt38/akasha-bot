@@ -1,6 +1,6 @@
 # Multiplaform Bridge Inbox - Discord unified inbox bot
 
-![Version](https://img.shields.io/badge/version-0.36.6-blue)
+![Version](https://img.shields.io/badge/version-0.37.0-blue)
 
 Bot Discord Python servant de bridge de messagerie unifiée.
 
@@ -282,7 +282,12 @@ Do NOT commit real credentials. Use `.env` and a proper secrets manager for prod
 
 ## Changelog
 
-### v0.36.x ← *actuel*
+### v0.37.x ← *actuel*
+
+- **feat: salon mon-compte avec statistiques personnelles, expiration et préférences DM**
+- **fix: format uniforme des dates membre et signalements en JJ/MM/AA**
+
+### v0.36.x
 
 - **feat: signalements Discord unifiés avec sources Plex, Seerr et Discord**
 - **feat: réponses et statuts synchronisés avec les issues Seerr et les commentaires Plex**
