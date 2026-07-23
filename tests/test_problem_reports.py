@@ -22,7 +22,7 @@ def test_legacy_database_is_migrated_once(tmp_path):
         columns = {row[1] for row in await (await db.conn.execute("PRAGMA table_info(users)")).fetchall()}
         assert {"created_at", "overseerr_id", "overseerr_plex_username", "updated_at"}.issubset(columns)
         migrations = [row[0] for row in await (await db.conn.execute("SELECT version FROM schema_migrations ORDER BY version")).fetchall()]
-        assert migrations == ["001_legacy_users", "002_problem_report_sources"]
+        assert migrations == ["001_legacy_users", "002_problem_report_sources", "003_account_notification_preferences"]
         await db.conn.close()
 
     asyncio.run(run())

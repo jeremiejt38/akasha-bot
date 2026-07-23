@@ -120,6 +120,7 @@ class Database:
         migrations = [
             ("001_legacy_users", self._migrate_legacy_users),
             ("002_problem_report_sources", self._migrate_problem_report_sources),
+            ("003_account_notification_preferences", self._migrate_account_notification_preferences),
         ]
         async with self.conn.execute("SELECT version FROM schema_migrations") as cursor:
             applied = {row[0] for row in await cursor.fetchall()}
@@ -167,6 +168,10 @@ class Database:
         await self._ensure_problem_report_column("source", "TEXT NOT NULL DEFAULT 'discord'")
         await self._ensure_problem_report_column("external_id", "TEXT")
         await self.conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_problem_reports_source_external ON problem_reports(source, external_id) WHERE external_id IS NOT NULL")
+
+    async def _migrate_account_notification_preferences(self):
+        await self._ensure_user_column("dm_problem_notifications", "INTEGER NOT NULL DEFAULT 1")
+        await self._ensure_user_column("dm_request_notifications", "INTEGER NOT NULL DEFAULT 1")
 
     async def _ensure_problem_report_column(self, name: str, definition: str):
         async with self.conn.execute("PRAGMA table_info(problem_reports)") as cursor:
@@ -234,6 +239,16 @@ class Database:
         ) as cursor:
             row = await cursor.fetchone()
             return dict(row) if row else None
+
+    async def update_notification_preferences(self, discord_id: str, **preferences):
+        allowed = {"dm_problem_notifications", "dm_request_notifications"}
+        values = {key: int(bool(value)) for key, value in preferences.items() if key in allowed}
+        if values:
+            await self.conn.execute(
+                f"UPDATE users SET {', '.join(f'{key} = ?' for key in values)} WHERE discord_id = ?",
+                (*values.values(), discord_id),
+            )
+            await self.conn.commit()
 
     async def set_user(self, **fields):
         columns = [
@@ -303,6 +318,14 @@ class Database:
         async with self.conn.execute("SELECT * FROM problem_reports WHERE id = ?", (report_id,)) as cursor:
             row = await cursor.fetchone()
             return dict(row) if row else None
+
+    async def get_problem_report_counts(self, discord_id: str):
+        async with self.conn.execute(
+            "SELECT COUNT(*) AS total, SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END) AS open_count FROM problem_reports WHERE discord_id = ?",
+            (discord_id,),
+        ) as cursor:
+            row = await cursor.fetchone()
+            return {"total": row[0] or 0, "open": row[1] or 0}
 
     async def get_problem_reports_for_user(self, discord_id: str):
         async with self.conn.execute("SELECT * FROM problem_reports WHERE discord_id = ? ORDER BY reported_at DESC LIMIT 20", (discord_id,)) as cursor:

@@ -29,6 +29,7 @@ from integrations.invitation_manager import InvitationManager
 from integrations.poll_manager import PollView
 from integrations.services_monitor import ServicesMonitor
 from integrations.problem_reports import ProblemReportFlow
+from integrations.account_dashboard import AccountDashboard, AccountPanel
 
 INBOX_CATEGORY_NAME = os.getenv("INBOX_CATEGORY_NAME", "📥 INBOX")
 BOT_NAME = os.getenv("BOT_NAME", "Akasha")
@@ -140,6 +141,7 @@ class DiscordBridge:
         self.invitation_manager = InvitationManager(wizarr_client, db)
         self.services_monitor = ServicesMonitor()
         self.problem_reports = ProblemReportFlow(self, db, overseerr_client)
+        self.account_dashboard = AccountDashboard(self, db, overseerr_client)
         self._ready_event = asyncio.Event()
         self._closed = False
         self._bot_task = None
@@ -165,6 +167,7 @@ class DiscordBridge:
             try:
                 self.onboarding.register_persistent_views(self.bot)
                 await self.problem_reports.register(self.bot)
+                self.bot.add_view(AccountPanel(self.account_dashboard))
             except Exception:
                 logger.exception("Failed to register persistent onboarding views")
             try:
@@ -172,6 +175,7 @@ class DiscordBridge:
                 if guild:
                     await self.onboarding.ensure_verification_channel(guild)
                     await self.problem_reports.ensure_member_channel(guild)
+                    await self.account_dashboard.ensure_channel(guild)
                     await self.problem_reports.ensure_admin_channel(guild)
                     plex_count = await self.problem_reports.sync_plex_reports(guild)
                     seerr_count = await self.problem_reports.sync_seerr_issues(guild)
