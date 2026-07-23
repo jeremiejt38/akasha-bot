@@ -142,6 +142,7 @@ Available slash commands for members:
 - **`/invitations [statut]`** — Lists Wizarr invitations filtered by status (`all`, `unused`, `used`, `expired`) and lets you revoke them with a button (admin only).
 - **`/logs [limite]`** — Shows recent audited actions: invitations, renewals, syncs, notes, role revocations, etc. (admin only).
 - **`/poll <question> <option1> <option2> [option3] [option4]`** — Creates a simple poll with up to 4 options. Users vote by clicking buttons and results update live (admin only).
+- **`/services`** — Shows the status and version of monitored Akasha services (Plex, Jellyfin, Overseerr, Wizarr, website) (admin only).
 
 ## Discord community onboarding
 
@@ -219,6 +220,14 @@ OVERSEERR_WEBHOOK_CHANNEL_ID=123456789012345678
 
 Then point the Overseerr webhook to `https://bot.akasha.ing/webhooks/overseerr`. The bot will post an embed in the configured channel for every Overseerr notification, and DM the requesting user when a requested media becomes available (`MEDIA_AVAILABLE`).
 
+## Admin notifications
+
+All admin notifications (expiration alerts, auto-sync errors, support tickets, feedback, renewal requests) are sent to the configured admin log channel if `ADMIN_LOG_CHANNEL_ID` is set. If not, they fall back to a DM to the admin (`ADMIN_DISCORD_ID`).
+
+```env
+ADMIN_LOG_CHANNEL_ID=123456789012345678
+```
+
 ## Automatic synchronization
 
 The bot runs a background sync job every `AUTO_SYNC_INTERVAL_HOURS` hours (default 24). It synchronizes all known subscribers with Overseerr (updates Discord ID, usernames, Plex username) and reassigns the member role if missing. The admin is notified by DM if any sync fails.
@@ -265,6 +274,8 @@ Do NOT commit real credentials. Use `.env` and a proper secrets manager for prod
 ### v0.30.x ← *actuel*
 
 - **feat**: commande admin `/poll` pour créer des sondages interactifs avec jusqu'à 4 options
+- **feat**: canal de log admin `ADMIN_LOG_CHANNEL_ID` pour centraliser les notifications admin
+- **feat**: commande admin `/services` pour surveiller l'état et les versions des services Akasha
 
 ### v0.29.x
 
