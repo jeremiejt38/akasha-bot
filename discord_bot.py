@@ -386,6 +386,13 @@ class DiscordBridge:
         )
         self.bot.tree.add_command(services_cmd, guild=discord.Object(id=self.guild_id))
 
+        stats_cmd = app_commands.Command(
+            name="stats",
+            description="Affiche les statistiques avancées des abonnés (admin only)",
+            callback=self._stats_command
+        )
+        self.bot.tree.add_command(stats_cmd, guild=discord.Object(id=self.guild_id))
+
     async def _handle_inbound_dm(self, message: discord.Message):
         try:
             user_id = str(message.author.id)
@@ -979,6 +986,82 @@ class DiscordBridge:
             logger.exception("Services command failed")
             await interaction.followup.send(
                 f"❌ Impossible de récupérer l'état des services.", ephemeral=True
+            )
+
+    async def _stats_command(self, interaction: discord.Interaction):
+        if interaction.user.id != self.admin_id:
+            await interaction.response.send_message("Seul l'admin peut utiliser cette commande.", ephemeral=True)
+            return
+        await interaction.response.defer(ephemeral=True, thinking=True)
+
+        try:
+            users = await self.db.get_all_users()
+            total = len(users)
+            now = datetime.datetime.utcnow()
+
+            active = 0
+            expired = 0
+            pending_renewals = 0
+            expiring_7 = 0
+            expiring_30 = 0
+            new_this_month = 0
+            trust_scores = []
+
+            for u in users:
+                expires = u.get("wizarr_invite_expires")
+                if expires:
+                    try:
+                        expires_dt = datetime.datetime.fromisoformat(expires.replace("Z", "+00:00"))
+                        if expires_dt > now:
+                            active += 1
+                            delta = (expires_dt - now).days
+                            if delta <= 7:
+                                expiring_7 += 1
+                            if delta <= 30:
+                                expiring_30 += 1
+                        else:
+                            expired += 1
+                    except Exception:
+                        active += 1
+                else:
+                    active += 1
+
+                if u.get("renewal_status") == "pending":
+                    pending_renewals += 1
+
+                created = u.get("created_at")
+                if created:
+                    try:
+                        created_dt = datetime.datetime.fromisoformat(created.replace("Z", "+00:00"))
+                        if created_dt.year == now.year and created_dt.month == now.month:
+                            new_this_month += 1
+                    except Exception:
+                        pass
+
+                score = u.get("tracearr_trust_score")
+                if score is not None:
+                    trust_scores.append(score)
+
+            avg_trust = sum(trust_scores) / len(trust_scores) if trust_scores else 0
+
+            embed = discord.Embed(
+                title=f"📈 Statistiques {BOT_NAME}",
+                description=f"Données basées sur {total} abonné(s).",
+                color=discord.Color.gold(),
+            )
+            embed.add_field(name="Total abonnés", value=str(total), inline=True)
+            embed.add_field(name="Actifs", value=str(active), inline=True)
+            embed.add_field(name="Expirés", value=str(expired), inline=True)
+            embed.add_field(name="Renouvellements en attente", value=str(pending_renewals), inline=True)
+            embed.add_field(name="Expirent ≤ 7j", value=str(expiring_7), inline=True)
+            embed.add_field(name="Expirent ≤ 30j", value=str(expiring_30), inline=True)
+            embed.add_field(name="Nouveaux ce mois", value=str(new_this_month), inline=True)
+            embed.add_field(name="Trust score moyen", value=f"{avg_trust:.2f}", inline=True)
+            await interaction.followup.send(embed=embed, ephemeral=True)
+        except Exception:
+            logger.exception("Stats command failed")
+            await interaction.followup.send(
+                f"❌ Impossible de récupérer les statistiques.", ephemeral=True
             )
 
     async def _logs_command(self, interaction: discord.Interaction, limite: int = 20):
