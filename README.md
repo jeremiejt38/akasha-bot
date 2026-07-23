@@ -1,6 +1,6 @@
 # Multiplaform Bridge Inbox - Discord unified inbox bot
 
-![Version](https://img.shields.io/badge/version-0.41.5-blue)
+![Version](https://img.shields.io/badge/version-0.41.6-blue)
 
 Bot Discord Python servant de bridge de messagerie unifiée.
 
@@ -290,6 +290,7 @@ Do NOT commit real credentials. Use `.env` and a proper secrets manager for prod
 - **security: vérification des signatures de webhooks Meta**
 - **fix: stabilité des canaux Telegram, activation des réponses automatiques et masquage des jetons dans les logs**
 - **fix: envoi du QR WhatsApp via le service Docker interne**
+- **fix: appairage WhatsApp avec QR image PNG en DM Discord**
 
 ### v0.40.x
 
