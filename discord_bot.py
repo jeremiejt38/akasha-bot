@@ -323,6 +323,13 @@ class DiscordBridge:
         )(support_cmd)
         self.bot.tree.add_command(support_cmd, guild=discord.Object(id=self.guild_id))
 
+        faq_cmd = app_commands.Command(
+            name="faq",
+            description="Affiche les questions fréquentes",
+            callback=self._faq_command
+        )
+        self.bot.tree.add_command(faq_cmd, guild=discord.Object(id=self.guild_id))
+
     async def _handle_inbound_dm(self, message: discord.Message):
         try:
             user_id = str(message.author.id)
@@ -791,6 +798,32 @@ class DiscordBridge:
         await interaction.response.send_message(
             f"✅ Note enregistrée pour <@{membre.id}>.", ephemeral=True
         )
+
+    async def _faq_command(self, interaction: discord.Interaction):
+        if not self.auto_responder:
+            await interaction.response.send_message(
+                "L'auto-responder n'est pas activé.", ephemeral=True
+            )
+            return
+
+        questions = self.auto_responder.list_questions(limit=15)
+        if not questions:
+            await interaction.response.send_message(
+                "Aucune question fréquente n'est configurée.", ephemeral=True
+            )
+            return
+
+        embed = discord.Embed(
+            title=f"FAQ {BOT_NAME}",
+            description="Voici les questions les plus fréquentes :",
+            color=discord.Color.blue(),
+        )
+        for question, answer in questions:
+            # Truncate long answers for embed field values
+            value = answer[:1020] + "..." if len(answer) > 1024 else answer
+            embed.add_field(name=f"Q: {question}", value=f"R: {value}", inline=False)
+
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     async def _support_command(self, interaction: discord.Interaction, sujet: str, description: str):
         await interaction.response.defer(ephemeral=True, thinking=True)
