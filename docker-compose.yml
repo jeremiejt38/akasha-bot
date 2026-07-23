@@ -16,6 +16,7 @@ services:
       - traefik.http.routers.bot.entrypoints=http,https
       - traefik.http.routers.bot.service=bot
       - traefik.http.services.bot.loadbalancer.server.port=8000
+      - net.unraid.docker.icon=https://i.ibb.co/hx6CRqt4/a755fbb7-ee17-43d4-a627-b6007c84417f-modified.png
     healthcheck:
       test: ["CMD", "/bin/sh", "-c", "curl -fsS http://localhost:8000/health || exit 1"]
       interval: 30s
@@ -37,6 +38,8 @@ services:
       - ./data/tmp:/tmp
     networks:
       - plex-backend
+    labels:
+      - net.unraid.docker.icon=https://i.ibb.co/hx6CRqt4/a755fbb7-ee17-43d4-a627-b6007c84417f-modified.png
     deploy:
       resources:
         limits:
