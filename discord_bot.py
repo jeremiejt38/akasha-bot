@@ -11,6 +11,7 @@ import datetime
 import json
 import logging
 import io
+import csv
 import os
 import re
 import tempfile
@@ -303,6 +304,13 @@ class DiscordBridge:
             callback=self._renew_command
         )
         self.bot.tree.add_command(renew_cmd, guild=discord.Object(id=self.guild_id))
+
+        export_cmd = app_commands.Command(
+            name="export",
+            description="Exporte la liste des abonnés au format CSV (admin only)",
+            callback=self._export_command
+        )
+        self.bot.tree.add_command(export_cmd, guild=discord.Object(id=self.guild_id))
 
     async def _handle_inbound_dm(self, message: discord.Message):
         try:
@@ -772,6 +780,47 @@ class DiscordBridge:
         await interaction.response.send_message(
             f"✅ Note enregistrée pour <@{membre.id}>.", ephemeral=True
         )
+
+    async def _export_command(self, interaction: discord.Interaction):
+        if interaction.user.id != self.admin_id:
+            await interaction.response.send_message("Seul l'admin peut utiliser cette commande.", ephemeral=True)
+            return
+        await interaction.response.defer(ephemeral=True, thinking=True)
+
+        try:
+            users = await self.db.get_all_users()
+            output = io.StringIO()
+            writer = csv.writer(output)
+            writer.writerow([
+                "discord_id", "discord_username", "email", "overseerr_username",
+                "plex_username", "created_at", "expires_at", "months_subscribed",
+                "trust_score", "admin_notes", "renewal_status",
+            ])
+            for u in users:
+                writer.writerow([
+                    u.get("discord_id"),
+                    u.get("discord_username"),
+                    u.get("email"),
+                    u.get("overseerr_username"),
+                    u.get("overseerr_plex_username"),
+                    u.get("created_at"),
+                    u.get("wizarr_invite_expires"),
+                    u.get("months_subscribed") or 0,
+                    u.get("tracearr_trust_score") or "",
+                    u.get("admin_notes") or "",
+                    u.get("renewal_status") or "",
+                ])
+
+            output.seek(0)
+            file = discord.File(io.BytesIO(output.getvalue().encode("utf-8")), filename="akasha_subscribers.csv")
+            await interaction.followup.send(
+                f"📄 Export de {len(users)} abonnés.", file=file, ephemeral=True
+            )
+        except Exception:
+            logger.exception("Export command failed")
+            await interaction.followup.send(
+                f"❌ Impossible d'exporter les abonnés. Contacte l'équipe {BOT_NAME}.", ephemeral=True
+            )
 
     async def _renew_command(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True, thinking=True)
