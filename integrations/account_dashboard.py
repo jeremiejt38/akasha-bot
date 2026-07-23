@@ -124,7 +124,7 @@ class AccountDashboard:
         if not value:
             return "Inconnue"
         try:
-            return datetime.datetime.fromisoformat(value.replace("Z", "+00:00")).strftime("%d/%m/%Y")
+            return datetime.datetime.fromisoformat(value.replace("Z", "+00:00")).strftime("%d/%m/%y")
         except (TypeError, ValueError):
             return value
 
