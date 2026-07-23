@@ -1,6 +1,6 @@
 # Multiplaform Bridge Inbox - Discord unified inbox bot
 
-![Version](https://img.shields.io/badge/version-0.33.0-blue)
+![Version](https://img.shields.io/badge/version-0.34.0-blue)
 
 Bot Discord Python servant de bridge de messagerie unifiée.
 
@@ -282,13 +282,16 @@ Do NOT commit real credentials. Use `.env` and a proper secrets manager for prod
 
 ## Changelog
 
-### v0.33.x ← *actuel*
+### v0.34.x ← *actuel*
+
+- **feat**: canal de logs critiques `CRITICAL_LOG_CHANNEL_ID` pour les alertes importantes
+- **feat**: surveillance automatique des services avec alertes critiques si un service passe hors ligne
+
+### v0.33.x
 
 - **feat**: commande `/link <email>` pour lier son compte Seerr sans passer par le modal
 - **feat**: amélioration du message de bienvenue avec la liste des commandes disponibles
 - **feat**: statut Discord affichant la version du bot récupérée dans `pyproject.toml`
-- **feat**: canal de logs critiques `CRITICAL_LOG_CHANNEL_ID` pour les alertes importantes
-- **feat**: surveillance automatique des services avec alertes critiques si un service passe hors ligne
 
 ### v0.32.x
 
