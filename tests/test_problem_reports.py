@@ -22,7 +22,23 @@ def test_legacy_database_is_migrated_once(tmp_path):
         columns = {row[1] for row in await (await db.conn.execute("PRAGMA table_info(users)")).fetchall()}
         assert {"created_at", "overseerr_id", "overseerr_plex_username", "updated_at"}.issubset(columns)
         migrations = [row[0] for row in await (await db.conn.execute("SELECT version FROM schema_migrations ORDER BY version")).fetchall()]
-        assert migrations == ["001_legacy_users", "002_problem_report_sources", "003_account_notification_preferences"]
+        assert migrations == ["001_legacy_users", "002_problem_report_sources", "003_account_notification_preferences", "004_inbox_invitation_links"]
+        await db.conn.close()
+
+    asyncio.run(run())
+
+
+def test_inbox_invitation_identity_persistence(tmp_path):
+    async def run():
+        db = Database(str(tmp_path / "invitations.db"))
+        await db.connect()
+        await db.record_inbox_invitation("CODE", "WA", "user-1", "channel-1", "trial", 1)
+        await db.mark_inbox_invitation_used("CODE", "member@example.com")
+        invitation = await db.get_latest_inbox_invitation("WA", "user-1")
+        assert invitation["used_email"] == "member@example.com"
+        await db.link_external_identity("WA", "user-1", "member@example.com", "channel-1")
+        identity = await db.get_external_identity("WA", "user-1")
+        assert identity["email"] == "member@example.com"
         await db.conn.close()
 
     asyncio.run(run())

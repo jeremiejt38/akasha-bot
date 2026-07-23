@@ -121,6 +121,7 @@ class Database:
             ("001_legacy_users", self._migrate_legacy_users),
             ("002_problem_report_sources", self._migrate_problem_report_sources),
             ("003_account_notification_preferences", self._migrate_account_notification_preferences),
+            ("004_inbox_invitation_links", self._migrate_inbox_invitation_links),
         ]
         async with self.conn.execute("SELECT version FROM schema_migrations") as cursor:
             applied = {row[0] for row in await cursor.fetchall()}
@@ -172,6 +173,11 @@ class Database:
     async def _migrate_account_notification_preferences(self):
         await self._ensure_user_column("dm_problem_notifications", "INTEGER NOT NULL DEFAULT 1")
         await self._ensure_user_column("dm_request_notifications", "INTEGER NOT NULL DEFAULT 1")
+
+    async def _migrate_inbox_invitation_links(self):
+        await self.conn.execute("CREATE TABLE IF NOT EXISTS inbox_invitations (code TEXT PRIMARY KEY, platform TEXT NOT NULL, platform_user_id TEXT NOT NULL, channel_id TEXT NOT NULL, access_type TEXT NOT NULL, duration_days INTEGER NOT NULL, created_at TEXT NOT NULL, used_email TEXT, used_at TEXT)")
+        await self.conn.execute("CREATE TABLE IF NOT EXISTS external_identities (platform TEXT NOT NULL, platform_user_id TEXT NOT NULL, email TEXT NOT NULL, channel_id TEXT NOT NULL, linked_at TEXT NOT NULL, PRIMARY KEY(platform, platform_user_id))")
+        await self.conn.execute("CREATE INDEX IF NOT EXISTS idx_external_identities_email ON external_identities(email)")
 
     async def _ensure_problem_report_column(self, name: str, definition: str):
         async with self.conn.execute("PRAGMA table_info(problem_reports)") as cursor:
@@ -237,6 +243,36 @@ class Database:
             "SELECT * FROM users WHERE LOWER(overseerr_plex_username) = LOWER(?)",
             (plex_username,),
         ) as cursor:
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+    async def record_inbox_invitation(self, code: str, platform: str, platform_user_id: str, channel_id: int | str, access_type: str, duration_days: int):
+        now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        await self.conn.execute("INSERT OR REPLACE INTO inbox_invitations (code, platform, platform_user_id, channel_id, access_type, duration_days, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)", (code, platform, platform_user_id, str(channel_id), access_type, duration_days, now))
+        await self.conn.commit()
+
+    async def get_latest_inbox_invitation(self, platform: str, platform_user_id: str):
+        async with self.conn.execute("SELECT * FROM inbox_invitations WHERE platform = ? AND platform_user_id = ? ORDER BY created_at DESC LIMIT 1", (platform, platform_user_id)) as cursor:
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+    async def mark_inbox_invitation_used(self, code: str, email: str):
+        now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        await self.conn.execute("UPDATE inbox_invitations SET used_email = ?, used_at = ? WHERE code = ?", (email.lower().strip(), now, code))
+        await self.conn.commit()
+
+    async def link_external_identity(self, platform: str, platform_user_id: str, email: str, channel_id: int | str):
+        now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        await self.conn.execute("INSERT INTO external_identities (platform, platform_user_id, email, channel_id, linked_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(platform, platform_user_id) DO UPDATE SET email = excluded.email, channel_id = excluded.channel_id, linked_at = excluded.linked_at", (platform, platform_user_id, email.lower().strip(), str(channel_id), now))
+        await self.conn.commit()
+
+    async def get_user_by_external_identity(self, platform: str, platform_user_id: str):
+        async with self.conn.execute("SELECT users.* FROM external_identities JOIN users ON LOWER(users.email) = LOWER(external_identities.email) WHERE external_identities.platform = ? AND external_identities.platform_user_id = ?", (platform, platform_user_id)) as cursor:
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+    async def get_external_identity(self, platform: str, platform_user_id: str):
+        async with self.conn.execute("SELECT * FROM external_identities WHERE platform = ? AND platform_user_id = ?", (platform, platform_user_id)) as cursor:
             row = await cursor.fetchone()
             return dict(row) if row else None
 

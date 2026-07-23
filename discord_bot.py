@@ -292,6 +292,20 @@ class DiscordBridge:
         )
         self.bot.tree.add_command(invite_cmd, guild=discord.Object(id=self.guild_id))
 
+        trial_cmd = app_commands.Command(
+            name="essai",
+            description="Créer un essai Wizarr pour l'utilisateur de cet INBOX (admin only)",
+            callback=self._trial_invite_command,
+        )
+        self.bot.tree.add_command(trial_cmd, guild=discord.Object(id=self.guild_id))
+
+        subscription_cmd = app_commands.Command(
+            name="invitation",
+            description="Créer ou prolonger un abonnement pour l'utilisateur de cet INBOX (admin only)",
+            callback=self._subscription_invite_command,
+        )
+        self.bot.tree.add_command(subscription_cmd, guild=discord.Object(id=self.guild_id))
+
         account_cmd = app_commands.Command(
             name="account",
             description="Affiche les informations de ton compte Akasha",
@@ -615,14 +629,28 @@ class DiscordBridge:
         type_str = type_str.lower().strip()
         if type_str in ("free", "test", "essai"):
             return int(os.getenv("TRIAL_DURATION_DAYS", "14")), True
-        match = re.match(r"^(\d+)([jsma])$", type_str)
+        match = re.match(r"^(\d+)([jdmsay])$", type_str)
         if not match:
-            raise ValueError("Type invalide. Utilise 'free', 'test', 'essai' ou <nombre><j|s|m|a>.")
+            raise ValueError("Durée invalide. Utilise par exemple 1j, 1d, 1m, 1a ou 1y.")
         amount = int(match.group(1))
-        multipliers = {"j": 1, "s": 7, "m": 30, "a": 365}
+        multipliers = {"j": 1, "d": 1, "s": 7, "m": 30, "a": 365, "y": 365}
         return amount * multipliers[match.group(2)], False
 
+    async def _trial_invite_command(self, interaction: discord.Interaction, duration: str = "1j"):
+        await self._create_inbox_invitation(interaction, duration, is_trial=True)
+
+    async def _subscription_invite_command(self, interaction: discord.Interaction, duration: str):
+        await self._create_inbox_invitation(interaction, duration, is_trial=False)
+
     async def _invite_command(self, interaction: discord.Interaction, type: str):
+        try:
+            duration_days, is_trial = self._parse_invite_type(type)
+        except ValueError as error:
+            await interaction.response.send_message(str(error), ephemeral=True)
+            return
+        await self._create_inbox_invitation(interaction, type, is_trial=is_trial, duration_days=duration_days)
+
+    async def _create_inbox_invitation(self, interaction: discord.Interaction, duration: str, is_trial: bool, duration_days: int | None = None):
         if interaction.user.id != self.admin_id:
             await interaction.response.send_message("Seul l'admin peut utiliser cette commande.", ephemeral=True)
             return
@@ -644,24 +672,29 @@ class DiscordBridge:
         platform, platform_user_id = mapping
         await interaction.response.defer(ephemeral=True, thinking=True)
 
-        try:
-            duration_days, is_trial = self._parse_invite_type(type)
-        except ValueError as e:
-            await interaction.followup.send(str(e), ephemeral=True)
-            return
+        if duration_days is None:
+            try:
+                duration_days, _ = self._parse_invite_type(duration)
+            except ValueError as e:
+                await interaction.followup.send(str(e), ephemeral=True)
+                return
 
         try:
-            # Discord DM stacking: add remaining days from a used non-expired invitation
-            if platform == "DC":
-                duration_days = await self._compute_stacked_duration_days(platform_user_id, duration_days)
+            existing_user = await self._find_wizarr_user_for_platform(platform, platform_user_id)
+            if existing_user and not is_trial:
+                result = await self.wizarr_client.extend_user_expiry(existing_user["id"], duration_days)
+                expires = result.get("new_expiry")
+                await self._store_extended_expiry(platform, platform_user_id, expires, duration_days)
+                handler = self.platform_handlers.get(platform)
+                if handler:
+                    await handler.send(platform_user_id, self._build_extension_message(duration_days, expires))
+                await interaction.followup.send(f"Abonnement prolongé de {duration} pour {platform}.", ephemeral=True)
+                return
 
             invite = await self._create_wizarr_invitation(duration_days, is_trial)
             code = invite.get("code")
-            base_url = self.wizarr_client.base_url.replace("http://", "https://")
-            url = f"{base_url}/j/{code}"
-
-            is_existing = await self._is_existing_user(platform, platform_user_id)
-            message = self._build_invite_message(is_trial, is_existing, code, url, duration_days)
+            url = f"{os.getenv('AKASHA_INVITE_URL', 'https://akasha.ing').rstrip('/')}/j/{code}"
+            message = self._build_invite_message(is_trial, False, code, url, duration_days)
 
             # Forward the invite message to the recipient platform
             handler = self.platform_handlers.get(platform)
@@ -670,7 +703,8 @@ class DiscordBridge:
                 return
             await handler.send(platform_user_id, message)
 
-            # Store the invitation for Discord users so stacking and role assignment survive restarts.
+            await self.db.record_inbox_invitation(code, platform, platform_user_id, channel.id, "trial" if is_trial else "subscriber", duration_days)
+
             if platform == "DC":
                 user = await self.db.get_user_by_discord_id(platform_user_id) or {}
                 months = (user.get("months_subscribed") or 0) + max(1, int(duration_days / 30))
@@ -734,14 +768,31 @@ class DiscordBridge:
             logger.exception("Failed to compute stacked duration for discord_id=%s", discord_id)
         return requested_days
 
-    async def _is_existing_user(self, platform: str, platform_user_id: str) -> bool:
-        if platform != "DC" or not self.wizarr_client:
-            return False
-        user = await self.db.get_user_by_discord_id(platform_user_id)
+    async def _find_wizarr_user_for_platform(self, platform: str, platform_user_id: str):
+        if platform == "DC":
+            user = await self.db.get_user_by_discord_id(platform_user_id)
+        else:
+            user = await self.db.get_external_identity(platform, platform_user_id)
         if not user or not user.get("email"):
-            return False
-        wizarr_user = await self.wizarr_client.find_user_by_email(user["email"])
-        return bool(wizarr_user)
+            return None
+        return await self.wizarr_client.find_user_by_email(user["email"])
+
+    async def _store_extended_expiry(self, platform: str, platform_user_id: str, expires: str | None, duration_days: int):
+        if platform != "DC":
+            return
+        user = await self.db.get_user_by_discord_id(platform_user_id) or {}
+        months = (user.get("months_subscribed") or 0) + max(1, duration_days // 30)
+        await self.db.update_user(platform_user_id, wizarr_invite_expires=expires, months_subscribed=months, access_type="subscriber", updated_at=datetime.datetime.now(datetime.timezone.utc).isoformat())
+
+    @staticmethod
+    def _build_extension_message(duration_days: int, expires: str | None):
+        date = "inconnue"
+        if expires:
+            try:
+                date = datetime.datetime.fromisoformat(expires.replace("Z", "+00:00")).strftime("%d/%m/%y")
+            except ValueError:
+                date = expires
+        return f"Ton abonnement Akasha a bien été prolongé de {duration_days} jours. Nouvelle date d'expiration : {date}."
 
     async def _create_wizarr_invitation(self, duration_days: int, is_trial: bool):
         server_ids = [int(s) for s in os.getenv("WIZARR_INVITE_SERVER_IDS", "1,2").split(",") if s.strip()]
@@ -1385,10 +1436,39 @@ class DiscordBridge:
                 f"❌ Une erreur s'est produite pendant la synchronisation. Contacte l'équipe {BOT_NAME}.", ephemeral=True
             )
 
+    async def _sync_inbox_invitation_identity(self, platform_tag: str, platform_user_id: str):
+        if not self.wizarr_client:
+            return None
+        grant = await self.db.get_latest_inbox_invitation(platform_tag, platform_user_id)
+        if not grant:
+            return None
+        email = grant.get("used_email")
+        if not email:
+            invitation = await self.wizarr_client.get_invitation_by_code(grant["code"])
+            email = (invitation or {}).get("used_by")
+            if not email:
+                return None
+            await self.db.mark_inbox_invitation_used(grant["code"], email)
+        await self.db.link_external_identity(platform_tag, platform_user_id, email, grant["channel_id"])
+        return email
+
     async def _get_user_data_for_inbound(self, platform_tag: str, platform_user_id: str):
         if platform_tag == "DC":
             return await self.db.get_user_by_discord_id(platform_user_id)
-        return None
+        email = await self._sync_inbox_invitation_identity(platform_tag, platform_user_id)
+        user = await self.db.get_user_by_external_identity(platform_tag, platform_user_id)
+        if user:
+            return user
+        if not email or not self.wizarr_client:
+            return None
+        wizarr_user = await self.wizarr_client.find_user_by_email(email)
+        if not wizarr_user:
+            return {"email": email}
+        return {
+            "email": email,
+            "wizarr_invite_expires": wizarr_user.get("expires") or wizarr_user.get("expiry"),
+            "overseerr_username": wizarr_user.get("username") or wizarr_user.get("display_name"),
+        }
 
     async def _bump_channel_to_top(self, channel: discord.TextChannel):
         try:

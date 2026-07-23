@@ -54,6 +54,9 @@ class WizarrClient:
                 return user
         return None
 
+    async def extend_user_expiry(self, user_id: int | str, days: int):
+        return await self._request("POST", f"/users/{user_id}/extend", json={"days": days})
+
     async def get_invitations(self):
         return await self._request("GET", "/invitations")
 
