@@ -28,6 +28,7 @@ from integrations.sync_service import SyncService
 from integrations.invitation_manager import InvitationManager
 from integrations.poll_manager import PollView
 from integrations.services_monitor import ServicesMonitor
+from integrations.problem_reports import ProblemReportFlow
 
 INBOX_CATEGORY_NAME = os.getenv("INBOX_CATEGORY_NAME", "📥 INBOX")
 BOT_NAME = os.getenv("BOT_NAME", "Akasha")
@@ -138,6 +139,7 @@ class DiscordBridge:
         self.sync_service = SyncService(self, overseerr_client, db)
         self.invitation_manager = InvitationManager(wizarr_client, db)
         self.services_monitor = ServicesMonitor()
+        self.problem_reports = ProblemReportFlow(self, db, overseerr_client)
         self._ready_event = asyncio.Event()
         self._closed = False
         self._bot_task = None
@@ -162,12 +164,14 @@ class DiscordBridge:
                 logger.exception("Failed to sync slash commands")
             try:
                 self.onboarding.register_persistent_views(self.bot)
+                await self.problem_reports.register(self.bot)
             except Exception:
                 logger.exception("Failed to register persistent onboarding views")
             try:
                 guild = self.bot.get_guild(self.guild_id)
                 if guild:
                     await self.onboarding.ensure_verification_channel(guild)
+                    await self.problem_reports.ensure_member_channel(guild)
                 else:
                     logger.warning("Guild %s not available to create verification channel", self.guild_id)
             except Exception:

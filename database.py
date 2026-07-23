@@ -78,6 +78,31 @@ class Database:
             )
             """
         )
+        await self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS problem_reports (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                discord_id TEXT NOT NULL,
+                discord_username TEXT NOT NULL,
+                category TEXT NOT NULL,
+                subcategory TEXT,
+                media_type TEXT,
+                media_id INTEGER,
+                media_title TEXT,
+                season_number INTEGER,
+                episode_number INTEGER,
+                episode_title TEXT,
+                description TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'open',
+                admin_response TEXT,
+                admin_id TEXT,
+                reported_at TEXT NOT NULL,
+                resolved_at TEXT,
+                admin_message_id INTEGER,
+                admin_channel_id INTEGER
+            )
+            """
+        )
         await self._ensure_user_column("access_type", "TEXT DEFAULT 'subscriber'")
         await self._ensure_user_column("onboarding_answers", "TEXT")
         await self.conn.execute("UPDATE users SET access_type = 'subscriber' WHERE access_type IS NULL")
@@ -165,6 +190,39 @@ class Database:
         async with self.conn.execute("SELECT * FROM users ORDER BY created_at DESC") as cursor:
             rows = await cursor.fetchall()
             return [dict(row) for row in rows]
+
+    async def create_problem_report(self, **fields) -> int:
+        columns = ["discord_id", "discord_username", "category", "subcategory", "media_type", "media_id", "media_title", "season_number", "episode_number", "episode_title", "description", "reported_at"]
+        values = [fields.get(column) for column in columns]
+        async with self.conn.execute(
+            f"INSERT INTO problem_reports ({', '.join(columns)}) VALUES ({', '.join('?' for _ in columns)})",
+            values,
+        ) as cursor:
+            await self.conn.commit()
+            return cursor.lastrowid
+
+    async def update_problem_report(self, report_id: int, **fields):
+        allowed = {"status", "admin_response", "admin_id", "resolved_at", "admin_message_id", "admin_channel_id"}
+        updates = {key: value for key, value in fields.items() if key in allowed}
+        if updates:
+            await self.conn.execute(
+                f"UPDATE problem_reports SET {', '.join(f'{key} = ?' for key in updates)} WHERE id = ?",
+                (*updates.values(), report_id),
+            )
+            await self.conn.commit()
+
+    async def get_problem_report(self, report_id: int):
+        async with self.conn.execute("SELECT * FROM problem_reports WHERE id = ?", (report_id,)) as cursor:
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+    async def get_problem_reports_for_user(self, discord_id: str):
+        async with self.conn.execute("SELECT * FROM problem_reports WHERE discord_id = ? ORDER BY reported_at DESC LIMIT 20", (discord_id,)) as cursor:
+            return [dict(row) for row in await cursor.fetchall()]
+
+    async def get_open_problem_reports(self):
+        async with self.conn.execute("SELECT * FROM problem_reports WHERE status = 'open'") as cursor:
+            return [dict(row) for row in await cursor.fetchall()]
 
     async def record_access_grant(self, discord_id: str, code: str, expires: str | None, access_type: str):
         now = datetime.datetime.utcnow().isoformat()
