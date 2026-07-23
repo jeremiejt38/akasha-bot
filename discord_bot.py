@@ -912,11 +912,56 @@ class DiscordBridge:
         self._bot_task = loop.create_task(self.bot.start(token))
         await self._ready_event.wait()
         self.expiration_alerts.start()
+        self._auto_sync_task = loop.create_task(self._run_auto_sync())
 
     async def close(self):
         self._closed = True
         self.expiration_alerts.stop()
+        if getattr(self, "_auto_sync_task", None):
+            self._auto_sync_task.cancel()
         await self.bot.close()
+
+    async def _run_auto_sync(self):
+        interval_hours = int(os.getenv("AUTO_SYNC_INTERVAL_HOURS", "24"))
+        interval_seconds = max(3600, interval_hours * 3600)
+        logger.info("Starting auto-sync job every %s hours", interval_hours)
+        while not self._closed:
+            try:
+                await asyncio.sleep(interval_seconds)
+                if self._closed:
+                    break
+                await self._perform_auto_sync()
+            except asyncio.CancelledError:
+                break
+            except Exception:
+                logger.exception("Auto-sync job failed")
+                await asyncio.sleep(3600)
+
+    async def _perform_auto_sync(self):
+        if not self.overseerr_client:
+            return
+        try:
+            guild = self.bot.get_guild(self.guild_id) or await self.bot.fetch_guild(self.guild_id)
+            result = await self.sync_service.sync_all(guild)
+            logger.info("Auto-sync completed: %s success, %s failed", result.get("success", 0), result.get("failed", 0))
+            if result.get("failed", 0) > 0:
+                await self._notify_admin_auto_sync(result)
+        except Exception:
+            logger.exception("Auto-sync run failed")
+
+    async def _notify_admin_auto_sync(self, result: dict):
+        try:
+            admin = await self.bot.fetch_user(self.admin_id)
+            if admin is None:
+                return
+            errors = "\n".join(result.get("errors", [])[:5])
+            await admin.send(
+                f"⚠️ Auto-sync terminé avec {result.get('failed', 0)} échecs sur {result.get('success', 0) + result.get('failed', 0)} utilisateurs.\n{errors}"
+            )
+        except discord.Forbidden:
+            logger.warning("Cannot notify admin via DM")
+        except Exception:
+            logger.exception("Failed to notify admin about auto-sync")
 
     def register_platform_handler(self, platform_tag: str, handler):
         self.platform_handlers[platform_tag] = handler

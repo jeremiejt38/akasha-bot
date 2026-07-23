@@ -181,6 +181,16 @@ EXPIRATION_NOTIFY_SUBSCRIBERS=true
 - `EXPIRATION_ALERT_HOUR` — UTC hour at which the daily check runs
 - `EXPIRATION_NOTIFY_SUBSCRIBERS` — also DM affected subscribers if `true`
 
+## Automatic synchronization
+
+The bot runs a background sync job every `AUTO_SYNC_INTERVAL_HOURS` hours (default 24). It synchronizes all known subscribers with Overseerr (updates Discord ID, usernames, Plex username) and reassigns the member role if missing. The admin is notified by DM if any sync fails.
+
+Configure with:
+
+```env
+AUTO_SYNC_INTERVAL_HOURS=24
+```
+
 ## Debug mode
 Set `DEBUG=true` in `.env` to enable verbose logging. In debug mode, the bot prints:
 
