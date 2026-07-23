@@ -33,6 +33,18 @@ INBOX_CATEGORY_NAME = os.getenv("INBOX_CATEGORY_NAME", "📥 INBOX")
 BOT_NAME = os.getenv("BOT_NAME", "Akasha")
 
 
+def _load_version() -> str:
+    try:
+        import tomllib
+        with open("pyproject.toml", "rb") as f:
+            return tomllib.load(f)["project"]["version"]
+    except Exception:
+        return "?.?.?"
+
+
+BOT_VERSION = _load_version()
+
+
 class RequestConfirmView(discord.ui.View):
     def __init__(self, discord_bridge, overseerr_user_id: int, media_type: str, media_id: int, title: str):
         super().__init__(timeout=60)
@@ -133,6 +145,14 @@ class DiscordBridge:
         @self.bot.event
         async def on_ready():
             logger.info(f"Discord bot ready as {self.bot.user}")
+            try:
+                await self.bot.change_presence(
+                    activity=discord.Game(name=f"v{BOT_VERSION} — /help"),
+                    status=discord.Status.online,
+                )
+                logger.info("Set bot presence to version %s", BOT_VERSION)
+            except Exception:
+                logger.exception("Failed to set bot presence")
             try:
                 commands_before = [c.name for c in self.bot.tree.get_commands()]
                 logger.info("Commands in tree before sync: %s", commands_before)
@@ -1406,12 +1426,15 @@ class DiscordBridge:
         await self._ready_event.wait()
         self.expiration_alerts.start()
         self._auto_sync_task = loop.create_task(self._run_auto_sync())
+        self._service_health_task = loop.create_task(self._run_service_health_check())
 
     async def close(self):
         self._closed = True
         self.expiration_alerts.stop()
         if getattr(self, "_auto_sync_task", None):
             self._auto_sync_task.cancel()
+        if getattr(self, "_service_health_task", None):
+            self._service_health_task.cancel()
         await self.services_monitor.close()
         await self.bot.close()
 
@@ -1431,6 +1454,32 @@ class DiscordBridge:
                 logger.exception("Auto-sync job failed")
                 await asyncio.sleep(3600)
 
+    async def _run_service_health_check(self):
+        interval_minutes = int(os.getenv("SERVICE_HEALTH_CHECK_INTERVAL_MINUTES", "5"))
+        interval_seconds = max(60, interval_minutes * 60)
+        logger.info("Starting service health check every %s minutes", interval_minutes)
+        last_states: dict[str, bool] = {}
+        while not self._closed:
+            try:
+                await asyncio.sleep(interval_seconds)
+                if self._closed:
+                    break
+                results = await self.services_monitor.check_all()
+                for svc in results:
+                    name = svc["name"]
+                    ok = bool(svc["ok"])
+                    if name in last_states and last_states[name] and not ok:
+                        await self.send_critical_log(
+                            title=f"Service hors ligne : {name}",
+                            message=f"Le service **{name}** est passé hors ligne.\nStatus: {svc['status']}\nVersion: {svc['version']}",
+                            source="service-health",
+                        )
+                    last_states[name] = ok
+            except asyncio.CancelledError:
+                break
+            except Exception:
+                logger.exception("Service health check failed")
+
     async def _perform_auto_sync(self):
         if not self.overseerr_client:
             return
@@ -1449,6 +1498,11 @@ class DiscordBridge:
                 await self._notify_admin_auto_sync(result)
         except Exception:
             logger.exception("Auto-sync run failed")
+            await self.send_critical_log(
+                title="Échec du sync automatique",
+                message="Le job de synchronisation automatique avec Overseerr a échoué. Vérifiez les logs.",
+                source="auto-sync",
+            )
 
     async def send_admin_log(self, message: str, embed: discord.Embed | None = None):
         """Send a log/message to the admin channel or fallback to DM."""
@@ -1471,6 +1525,29 @@ class DiscordBridge:
                     await admin.send(message, embed=embed)
             except Exception:
                 logger.exception("Failed to fallback DM admin log")
+
+    async def send_critical_log(self, title: str, message: str, source: str | None = None):
+        """Send critical alerts to the dedicated critical log channel. No fallback to avoid spam."""
+        channel_id = os.getenv("CRITICAL_LOG_CHANNEL_ID")
+        if not channel_id:
+            return
+        try:
+            channel = self.bot.get_channel(int(channel_id))
+            if not channel:
+                logger.warning("Critical log channel %s not found", channel_id)
+                return
+            embed = discord.Embed(
+                title=f"🚨 {title}",
+                description=message[:4096],
+                color=discord.Color.red(),
+                timestamp=datetime.datetime.utcnow(),
+            )
+            if source:
+                embed.set_footer(text=f"Source: {source}")
+            await channel.send(embed=embed)
+            logger.info("Sent critical log: %s", title)
+        except Exception:
+            logger.exception("Failed to send critical log: %s", title)
 
     async def post_media_notification(self, channel_id: str | None, source: str, title: str, media_type: str | None, summary: str | None, year: int | None, thumb: str | None):
         if not channel_id:

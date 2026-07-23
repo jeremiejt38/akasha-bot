@@ -2,8 +2,11 @@ services:
   bot:
     build: .
     container_name: multibridge-bot
+    hostname: bot
+    env_file: .env
     volumes:
       - ./data:/app/data
+      - ./config:/app/config
     restart: unless-stopped
     networks:
       - plex-backend
@@ -14,16 +17,19 @@ services:
       - traefik.http.routers.bot.service=bot
       - traefik.http.services.bot.loadbalancer.server.port=8000
     healthcheck:
-      test: ["CMD", "/bin/sh", "-c", "kill -0 1 || exit 1"]
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health", "||", "exit", "1"]
       interval: 30s
-      timeout: 5s
-      start_period: 10s
+      timeout: 10s
+      start_period: 30s
       retries: 3
+    depends_on:
+      - whatsapp
 
   # WhatsApp bridge (Node + whatsapp-web.js)
   whatsapp:
     build: ./node_whatsapp
     container_name: bridge-whatsapp
+    hostname: whatsapp
     environment:
       - WA_JS_HEAP_MB=1024
     volumes:
