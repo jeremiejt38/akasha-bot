@@ -86,6 +86,16 @@ class AutoResponder:
         self.knowledge = _load_knowledge_base(self.data_path)
         logger.info("Reloaded auto-responder knowledge base from %s", self.data_path)
 
+    def list_questions(self, limit: int = 20) -> list:
+        """Return a list of (question, answer) tuples for FAQ display."""
+        items = []
+        for entry in self.knowledge:
+            question = entry.get("question") or (entry.get("patterns", [None])[0])
+            answer = entry.get("answer") or entry.get("template") or entry.get("fallback") or "..."
+            if question:
+                items.append((question, answer))
+        return items[:limit]
+
     def respond(self, message: str, user_data: dict | None = None) -> str | None:
         text = _normalize(message)
         if not text:

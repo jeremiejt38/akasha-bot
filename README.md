@@ -121,6 +121,7 @@ Available slash commands for members:
 - **`/request <title>`** — Searches Overseerr and creates a media request after confirmation.
 - **`/renew`** — Requests a subscription renewal. Stores the request and notifies the admin.
 - **`/support <sujet> <description>`** — Opens a support ticket that is sent to the admin by DM.
+- **`/faq`** — Displays frequently asked questions from the auto-responder knowledge base.
 - **`/status`** — Shows the health status of Akasha services (Plex, Jellyfin, Seerr, Wizarr, website).
 
 ## Admin commands
