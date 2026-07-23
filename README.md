@@ -1,6 +1,6 @@
 # Multiplaform Bridge Inbox - Discord unified inbox bot
 
-![Version](https://img.shields.io/badge/version-0.34.5-blue)
+![Version](https://img.shields.io/badge/version-0.35.0-blue)
 
 Bot Discord Python servant de bridge de messagerie unifiée.
 
@@ -282,7 +282,15 @@ Do NOT commit real credentials. Use `.env` and a proper secrets manager for prod
 
 ## Changelog
 
-### v0.34.x ← *actuel*
+### v0.35.x ← *actuel*
+
+- **feat: onboarding géré par Akasha-bot avec salon de vérification, rôles temporaires et modal de liaison Seerr**
+- **feat: rôles Essai, Abonné et Expiré synchronisés depuis les invitations Wizarr**
+- **feat: salon privé d'expiration avec procédure de renouvellement**
+- **fix: détection des comptes Discord déjà liés dans Seerr**
+- **chore: déploiements Unraid incrémentaux et contexte Docker optimisé**
+
+### v0.34.x
 
 - **feat**: canal de logs critiques `CRITICAL_LOG_CHANNEL_ID` pour les alertes importantes
 - **feat**: surveillance automatique des services avec alertes critiques si un service passe hors ligne
