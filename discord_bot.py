@@ -251,6 +251,7 @@ class DiscordBridge:
                             logger.debug("Forwarding admin reply to %s (text=%r, attachments=%s)", platform, message.content[:200], len(attachments))
                             try:
                                 await handler.send(platform_user_id, message.content or "", attachments=attachments)
+                                await self.db.resolve_unanswered_inbox_conversation(channel_id)
                             except Exception:
                                 logger.exception("Failed to forward admin message to platform %s", platform)
                                 await message.channel.send("⚠️ Livraison impossible sur cette messagerie. La réponse n'a pas été remise à l'utilisateur.")
@@ -1548,6 +1549,7 @@ class DiscordBridge:
         self._auto_sync_task = loop.create_task(self._run_auto_sync())
         self._external_reports_task = loop.create_task(self._run_external_report_sync())
         self._service_health_task = loop.create_task(self._run_service_health_check())
+        self._unanswered_inbox_task = loop.create_task(self._run_unanswered_inbox_reminders())
 
     async def close(self):
         self._closed = True
@@ -1558,6 +1560,8 @@ class DiscordBridge:
             self._service_health_task.cancel()
         if getattr(self, "_external_reports_task", None):
             self._external_reports_task.cancel()
+        if getattr(self, "_unanswered_inbox_task", None):
+            self._unanswered_inbox_task.cancel()
         await self.services_monitor.close()
         await self.container_services.close()
         await self.invitation_identity_sync.close()
@@ -1582,6 +1586,30 @@ class DiscordBridge:
                 break
             except Exception:
                 logger.exception("External report sync failed")
+
+    async def _run_unanswered_inbox_reminders(self):
+        interval_seconds = max(300, int(os.getenv("INBOX_UNANSWERED_CHECK_MINUTES", "60")) * 60)
+        logger.info("Starting unanswered INBOX reminder check every %s minutes", interval_seconds // 60)
+        while not self._closed:
+            try:
+                await asyncio.sleep(interval_seconds)
+                if self._closed:
+                    break
+                reminder_before = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=24)
+                conversations = await self.db.get_unanswered_inbox_reminders(reminder_before)
+                for conversation in conversations:
+                    await self._notify_admin_unanswered(
+                        conversation["platform_user_id"],
+                        conversation.get("last_message_text") or "",
+                        channel_id=conversation["discord_channel_id"],
+                        platform_tag=conversation["platform"],
+                        reminder=True,
+                    )
+                    await self.db.mark_unanswered_inbox_reminder_notified(conversation["discord_channel_id"])
+            except asyncio.CancelledError:
+                break
+            except Exception:
+                logger.exception("Unanswered INBOX reminder check failed")
 
     async def _run_auto_sync(self):
         interval_hours = int(os.getenv("AUTO_SYNC_INTERVAL_HOURS", "24"))
@@ -1928,28 +1956,37 @@ class DiscordBridge:
                 user_data = await self._get_user_data_for_inbound(platform_tag, platform_user_id)
                 answered = await self._send_auto_response(platform_tag, platform_user_id, channel, text, user_data)
 
-            if not answered and platform_tag == "DC":
-                await self._notify_admin_unanswered(platform_user_id, text, channel)
+            if answered:
+                await self.db.resolve_unanswered_inbox_conversation(channel.id)
+            else:
+                should_notify = await self.db.record_unanswered_inbox_conversation(
+                    channel.id, platform_tag, platform_user_id, text
+                )
+                if should_notify:
+                    await self._notify_admin_unanswered(
+                        platform_user_id, text, channel_id=channel.id, platform_tag=platform_tag
+                    )
 
             await self._bump_channel_to_top(channel)
         except Exception:
             logger.exception("Failed to post inbound message to Discord")
 
-    async def _notify_admin_unanswered(self, discord_id: str, text: str, channel=None):
+    async def _notify_admin_unanswered(self, platform_user_id: str, text: str, channel_id=None, platform_tag="DC", reminder=False):
         if not self.onboarding.config.support_dm_enabled:
             return
         try:
             admin = await self.bot.fetch_user(self.admin_id)
             if admin is None:
                 return
-            channel_link = f"https://discord.com/channels/{self.guild_id}/{channel.id}" if channel else ""
+            channel_link = f"https://discord.com/channels/{self.guild_id}/{channel_id}" if channel_id else ""
+            prefix = "Rappel : conversation toujours sans réponse" if reminder else "Message sans réponse"
             await admin.send(
-                f"[Message en attente - {BOT_NAME}] de <@{discord_id}> (Discord ID: {discord_id}):\n"
-                f"{text[:1500]}\n\n"
-                f"Channel inbox : {channel_link}"
+                f"[{prefix} - {BOT_NAME}] [{platform_tag}] utilisateur {platform_user_id}:\n"
+                f"{text[:1500] or '(message sans texte)'}\n\n"
+                f"Channel INBOX : {channel_link}"
             )
-            logger.info("Notified admin about unanswered DM from user %s", discord_id)
+            logger.info("Notified admin about unanswered %s conversation from user %s", platform_tag, platform_user_id)
         except discord.Forbidden:
             logger.warning("Cannot notify admin via DM")
         except Exception:
-            logger.exception("Failed to notify admin about unanswered DM")
+            logger.exception("Failed to notify admin about unanswered INBOX conversation")

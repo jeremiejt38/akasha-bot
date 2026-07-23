@@ -122,6 +122,7 @@ class Database:
             ("002_problem_report_sources", self._migrate_problem_report_sources),
             ("003_account_notification_preferences", self._migrate_account_notification_preferences),
             ("004_inbox_invitation_links", self._migrate_inbox_invitation_links),
+            ("005_inbox_unanswered_conversations", self._migrate_inbox_unanswered_conversations),
         ]
         async with self.conn.execute("SELECT version FROM schema_migrations") as cursor:
             applied = {row[0] for row in await cursor.fetchall()}
@@ -179,6 +180,23 @@ class Database:
         await self.conn.execute("CREATE TABLE IF NOT EXISTS external_identities (platform TEXT NOT NULL, platform_user_id TEXT NOT NULL, email TEXT NOT NULL, channel_id TEXT NOT NULL, linked_at TEXT NOT NULL, PRIMARY KEY(platform, platform_user_id))")
         await self.conn.execute("CREATE INDEX IF NOT EXISTS idx_external_identities_email ON external_identities(email)")
 
+    async def _migrate_inbox_unanswered_conversations(self):
+        await self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS inbox_unanswered_conversations (
+                discord_channel_id TEXT PRIMARY KEY,
+                platform TEXT NOT NULL,
+                platform_user_id TEXT NOT NULL,
+                first_unanswered_at TEXT NOT NULL,
+                last_message_at TEXT NOT NULL,
+                last_message_text TEXT,
+                initial_notified_at TEXT,
+                reminder_notified_at TEXT,
+                resolved_at TEXT
+            )
+            """
+        )
+
     async def _ensure_problem_report_column(self, name: str, definition: str):
         async with self.conn.execute("PRAGMA table_info(problem_reports)") as cursor:
             columns = {row[1] for row in await cursor.fetchall()}
@@ -190,6 +208,71 @@ class Database:
             columns = {row[1] for row in await cursor.fetchall()}
         if name not in columns:
             await self.conn.execute(f"ALTER TABLE users ADD COLUMN {name} {definition}")
+
+    async def record_unanswered_inbox_conversation(self, channel_id: int | str, platform: str, platform_user_id: str, message_text: str) -> bool:
+        channel_id = str(channel_id)
+        now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        async with self.conn.execute(
+            "SELECT resolved_at FROM inbox_unanswered_conversations WHERE discord_channel_id = ?",
+            (channel_id,),
+        ) as cursor:
+            existing = await cursor.fetchone()
+        if existing is None or existing["resolved_at"] is not None:
+            await self.conn.execute(
+                """
+                INSERT INTO inbox_unanswered_conversations (
+                    discord_channel_id, platform, platform_user_id, first_unanswered_at,
+                    last_message_at, last_message_text, initial_notified_at, reminder_notified_at, resolved_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL)
+                ON CONFLICT(discord_channel_id) DO UPDATE SET
+                    platform = excluded.platform,
+                    platform_user_id = excluded.platform_user_id,
+                    first_unanswered_at = excluded.first_unanswered_at,
+                    last_message_at = excluded.last_message_at,
+                    last_message_text = excluded.last_message_text,
+                    initial_notified_at = excluded.initial_notified_at,
+                    reminder_notified_at = NULL,
+                    resolved_at = NULL
+                """,
+                (channel_id, platform, str(platform_user_id), now, now, message_text, now),
+            )
+            await self.conn.commit()
+            return True
+        await self.conn.execute(
+            "UPDATE inbox_unanswered_conversations SET last_message_at = ?, last_message_text = ? WHERE discord_channel_id = ?",
+            (now, message_text, channel_id),
+        )
+        await self.conn.commit()
+        return False
+
+    async def resolve_unanswered_inbox_conversation(self, channel_id: int | str):
+        now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        await self.conn.execute(
+            "UPDATE inbox_unanswered_conversations SET resolved_at = ? WHERE discord_channel_id = ? AND resolved_at IS NULL",
+            (now, str(channel_id)),
+        )
+        await self.conn.commit()
+
+    async def get_unanswered_inbox_reminders(self, reminder_before: datetime.datetime):
+        async with self.conn.execute(
+            """
+            SELECT * FROM inbox_unanswered_conversations
+            WHERE resolved_at IS NULL
+              AND initial_notified_at IS NOT NULL
+              AND reminder_notified_at IS NULL
+              AND first_unanswered_at <= ?
+            """,
+            (reminder_before.isoformat(),),
+        ) as cursor:
+            return [dict(row) for row in await cursor.fetchall()]
+
+    async def mark_unanswered_inbox_reminder_notified(self, channel_id: int | str):
+        now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        await self.conn.execute(
+            "UPDATE inbox_unanswered_conversations SET reminder_notified_at = ? WHERE discord_channel_id = ?",
+            (now, str(channel_id)),
+        )
+        await self.conn.commit()
 
     async def get_mapping(self, platform: str, platform_user_id: str):
         async with self.conn.execute(
