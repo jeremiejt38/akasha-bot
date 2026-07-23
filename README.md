@@ -230,6 +230,15 @@ All admin notifications (expiration alerts, auto-sync errors, support tickets, f
 ADMIN_LOG_CHANNEL_ID=123456789012345678
 ```
 
+## Critical alerts
+
+Critical alerts (service outages, failed auto-sync, etc.) are sent to a dedicated channel via `CRITICAL_LOG_CHANNEL_ID`. Unlike the admin log channel, critical logs are reserved for serious issues that require immediate attention and do not fall back to DM.
+
+```env
+CRITICAL_LOG_CHANNEL_ID=123456789012345678
+SERVICE_HEALTH_CHECK_INTERVAL_MINUTES=5
+```
+
 ## Automatic synchronization
 
 The bot runs a background sync job every `AUTO_SYNC_INTERVAL_HOURS` hours (default 24). It synchronizes all known subscribers with Overseerr (updates Discord ID, usernames, Plex username) and reassigns the member role if missing. The admin is notified by DM if any sync fails.
@@ -277,6 +286,9 @@ Do NOT commit real credentials. Use `.env` and a proper secrets manager for prod
 
 - **feat**: commande `/link <email>` pour lier son compte Seerr sans passer par le modal
 - **feat**: amélioration du message de bienvenue avec la liste des commandes disponibles
+- **feat**: statut Discord affichant la version du bot récupérée dans `pyproject.toml`
+- **feat**: canal de logs critiques `CRITICAL_LOG_CHANNEL_ID` pour les alertes importantes
+- **feat**: surveillance automatique des services avec alertes critiques si un service passe hors ligne
 
 ### v0.32.x
 
