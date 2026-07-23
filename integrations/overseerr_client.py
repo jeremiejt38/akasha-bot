@@ -70,6 +70,22 @@ class OverseerrClient:
             page += 1
         return None
 
+    async def search_media(self, query: str, page: int = 1, limit: int = 10):
+        return await self._request("GET", "/search", params={"query": query, "page": page, "limit": limit})
+
+    async def request_media(self, media_type: str, media_id: int, user_id: int):
+        """Create a media request in Overseerr.
+
+        media_type should be 'movie' or 'tv'.
+        media_id is the TMDB id from a search result.
+        """
+        payload = {
+            "mediaType": media_type,
+            "mediaId": media_id,
+            "userId": user_id,
+        }
+        return await self._request("POST", "/request", json=payload)
+
     async def update_user_discord_id(self, user_id: int, discord_id: str | None):
         """Update a user's Discord ID without overwriting other notification settings."""
         settings = await self.get_user_settings(user_id)
